@@ -30,7 +30,33 @@ staircase.
 `--palette` and `--max-colors` also apply: a fixed palette skips detection,
 and `--max-colors` caps the detected one.
 
+Soft edges such as glows are smoothed before snapping so they come out clean
+rather than grainy (`--snap-smooth`, default 1.2, 0 = off). Crisp edges are
+recognised by their width (2–2.5 px) and left alone, so corners keep their
+points.
+
 Code: `crates/vtracer/src/frontend/snap.rs`.
+
+### Removing regions (`--remove-at`, `--remove-color-at`, `--remove-background`)
+
+Erase parts of the image that should not be in the vector, such as a white
+background. Works in every clustering mode, and runs after segmentation, so
+in an interactive session each click costs nothing extra.
+
+- `--remove-at X,Y`: the region under a point (source pixels). Repeatable.
+- `--remove-color-at X,Y`: every region of that colour, including where the
+  background shows through gaps like the inside of an "O". Repeatable.
+- `--remove-background`: the colour covering most of the image border,
+  wherever it touches the border.
+
+Removed areas become transparent; a removed region never exposes whatever
+was beneath it.
+
+### Crop (`--crop[=PADDING]`)
+
+Trims the canvas to the drawing's exact bounds, like svgcrop.com but measured
+from the geometry (curves by their true extent). Pairs with background
+removal.
 
 ## Build
 
