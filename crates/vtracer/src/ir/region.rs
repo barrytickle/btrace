@@ -110,6 +110,9 @@ pub struct Segmentation {
     pub height: u32,
     /// Bottom-to-top paint order.
     pub layers: Vec<Layer>,
+    /// Working pixels per source pixel. A frontend that upscales before
+    /// segmenting sets this; the pipeline divides the fitted geometry by it.
+    pub scale: u32,
 }
 
 impl Segmentation {
@@ -118,6 +121,7 @@ impl Segmentation {
             width,
             height,
             layers: Vec::new(),
+            scale: 1,
         }
     }
 }

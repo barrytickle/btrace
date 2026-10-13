@@ -48,7 +48,11 @@ impl ColorClusterFrontend {
     /// inputs: the keyed image, the `RunnerConfig`, and the dimensions. The
     /// caller constructs `Runner::new(config, image)` inline so the runner's
     /// generic closure types never surface in a return signature.
-    fn prepare(&self, img: &ColorImage) -> Result<(ColorImage, RunnerConfig, usize, usize), Error> {
+    fn prepare(
+        &self,
+        img: &ColorImage,
+        force_key: bool,
+    ) -> Result<(ColorImage, RunnerConfig, usize, usize), Error> {
         if img.width == 0 || img.height == 0 {
             return Err(Error::EmptyImage);
         }
@@ -58,7 +62,7 @@ impl ColorClusterFrontend {
         let mut img = img.clone();
 
         // Transparency keying (stacked mode discards the keyed background).
-        let key_color = if should_key_image(&img) {
+        let key_color = if force_key || should_key_image(&img) {
             let key = find_unused_color(&img)?;
             apply_key(&mut img, key);
             key
@@ -114,15 +118,24 @@ impl ColorClusterFrontend {
     }
 }
 
-impl Frontend for ColorClusterFrontend {
-    fn segment(&self, img: &ColorImage) -> Result<Segmentation, Error> {
-        let (image, config, width, height) = self.prepare(img)?;
+impl ColorClusterFrontend {
+    /// [`segment`](Frontend::segment), optionally forcing transparency keying
+    /// even when [`should_key_image`]'s sampling would not trigger it — for
+    /// callers that know every transparent pixel is background.
+    pub(crate) fn segment_keyed(&self, img: &ColorImage, force_key: bool) -> Result<Segmentation, Error> {
+        let (image, config, width, height) = self.prepare(img, force_key)?;
         let clusters = Runner::new(config, image).run();
         Ok(Self::segmentation_from_clusters(&clusters, width, height))
     }
 
-    fn segment_with(&self, img: &ColorImage, ctx: &mut Ctx) -> Result<Segmentation, Error> {
-        let (image, config, width, height) = self.prepare(img)?;
+    /// [`segment_with`](Frontend::segment_with) with optional forced keying.
+    pub(crate) fn segment_keyed_with(
+        &self,
+        img: &ColorImage,
+        force_key: bool,
+        ctx: &mut Ctx,
+    ) -> Result<Segmentation, Error> {
+        let (image, config, width, height) = self.prepare(img, force_key)?;
 
         // Drive clustering incrementally so we can publish progress and observe
         // cancellation between batches. `run()` is exactly this loop, so the
@@ -138,5 +151,15 @@ impl Frontend for ColorClusterFrontend {
         ctx.report(Phase::Segment, 1.0);
 
         Ok(Self::segmentation_from_clusters(&clusters, width, height))
+    }
+}
+
+impl Frontend for ColorClusterFrontend {
+    fn segment(&self, img: &ColorImage) -> Result<Segmentation, Error> {
+        self.segment_keyed(img, false)
+    }
+
+    fn segment_with(&self, img: &ColorImage, ctx: &mut Ctx) -> Result<Segmentation, Error> {
+        self.segment_keyed_with(img, false, ctx)
     }
 }

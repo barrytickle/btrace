@@ -7,6 +7,8 @@
 //!   [`Threshold`] can be a fixed global cutoff or Bradley–Roth adaptive
 //!   thresholding for unevenly-lit input.
 //! * [`WatershedFrontend`] — hierarchical watershed on the pixel graph.
+//! * [`SnapFrontend`] — detect a palette, upscale smoothly and snap to it,
+//!   then color-cluster; for small or noisy flat-color art.
 //!
 //! Third parties can implement [`Frontend`] to feed external label maps or ML
 //! segmentation into the pipeline.
@@ -14,10 +16,12 @@
 mod binary;
 mod color_cluster;
 mod keying;
+mod snap;
 mod watershed;
 
 pub use binary::{BinaryFrontend, Threshold};
 pub use color_cluster::ColorClusterFrontend;
+pub use snap::{detect_palette, SnapFrontend};
 pub use watershed::{WatershedFrontend, WatershedHierarchy};
 
 use visioncortex::ColorImage;

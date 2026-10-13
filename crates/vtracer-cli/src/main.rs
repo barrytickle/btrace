@@ -35,7 +35,8 @@ struct Args {
     #[arg(long)]
     preset: Option<Preset>,
 
-    /// Region forming: `color-cluster` (default), `bw`, or `watershed`.
+    /// Region forming: `color-cluster` (default), `bw`, `watershed`, or `snap`
+    /// (auto palette + smooth upscale; for logos, icons and flat-color art).
     #[arg(long)]
     clustering: Option<Clustering>,
 
@@ -123,6 +124,10 @@ struct Args {
     /// Watershed clustering: hierarchy cut level (default 128; higher = more regions, uncapped).
     #[arg(long, value_parser = clap::value_parser!(u32))]
     watershed_detail: Option<u32>,
+
+    /// Snap clustering: upscale factor before snapping (0 = auto, up to 8).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(0..=16))]
+    snap_scale: Option<u32>,
 }
 
 fn parse_simplify_tolerance(s: &str) -> Result<f64, String> {
@@ -227,6 +232,9 @@ fn build_config(args: &Args) -> Result<Config, String> {
     }
     if let Some(v) = args.watershed_detail {
         config.watershed_detail = v;
+    }
+    if let Some(v) = args.snap_scale {
+        config.snap_scale = v;
     }
 
     // Palette: inline flag wins over file; both parse to a color list.

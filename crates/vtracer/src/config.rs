@@ -9,7 +9,7 @@ use crate::compose::Compositing;
 use crate::error::Error;
 use crate::fitter::{CurveFitter, FitParams, PixelFitter, PolygonFitter, SplineFitter};
 use crate::frontend::{
-    BinaryFrontend, ColorClusterFrontend, Frontend, Threshold, WatershedFrontend,
+    BinaryFrontend, ColorClusterFrontend, Frontend, SnapFrontend, Threshold, WatershedFrontend,
 };
 use crate::mosaic::{
     PixelSegmentFitter, PolygonSegmentFitter, SegmentFitter, SplineSegmentFitter,
@@ -28,6 +28,11 @@ pub enum Clustering {
     Binary,
     /// Hierarchical watershed on the pixel graph, cut at `watershed_detail`.
     Watershed,
+    /// Detect a palette (or use `palette`), upscale smoothly, snap every pixel
+    /// to it, then color-cluster. Best for logos, icons and other flat-color
+    /// art, especially small or compressed images. See
+    /// [`SnapFrontend`](crate::frontend::SnapFrontend).
+    Snap,
 }
 
 /// How regions are combined into the final document.
@@ -81,6 +86,11 @@ pub struct SegmentKey {
     binary_adaptive_window: u32,
     binary_adaptive_t: f64,
     watershed_detail: u32,
+    // Snap only (left empty/zero for other clusterings so they never re-segment
+    // on a palette change).
+    snap_scale: u32,
+    snap_palette: Vec<[u8; 3]>,
+    snap_max_colors: usize,
 }
 
 /// High-level converter configuration. [`Config::build`] turns this into a
@@ -135,6 +145,10 @@ pub struct Config {
     /// regions (each +25.5 roughly doubles the region count); 0 collapses the
     /// image to a single region. Uncapped.
     pub watershed_detail: u32,
+    /// Snap clustering: upscale factor before snapping; 0 = auto (up to 8×,
+    /// aiming for a ~4 MP working image). Curve parameters such as `simplify`
+    /// apply in working pixels.
+    pub snap_scale: u32,
 }
 
 impl Default for Config {
@@ -160,6 +174,7 @@ impl Default for Config {
             binary_adaptive_window: 0,
             binary_adaptive_t: 15.0,
             watershed_detail: 128,
+            snap_scale: 0,
         }
     }
 }
@@ -222,6 +237,12 @@ impl Config {
                 detail: self.watershed_detail,
                 min_area: self.speckle_area(),
             }),
+            Clustering::Snap => Box::new(SnapFrontend {
+                scale: self.snap_scale,
+                palette: self.palette.clone(),
+                max_colors: self.max_colors.unwrap_or(0),
+                min_area: self.speckle_area(),
+            }),
         }
     }
 
@@ -231,7 +252,10 @@ impl Config {
     }
 
     fn color_fitters(&self) -> Vec<Box<dyn ColorFitter>> {
-        if !self.palette.is_empty() {
+        if self.clustering == Clustering::Snap {
+            // Paints are already exact palette colors; just join same-paint runs.
+            vec![Box::new(MergeAdjacent)]
+        } else if !self.palette.is_empty() {
             vec![
                 Box::new(FixedPalette::new(self.palette.clone())),
                 Box::new(MergeAdjacent),
@@ -323,6 +347,18 @@ impl Config {
             binary_adaptive_window: self.binary_adaptive_window,
             binary_adaptive_t: self.binary_adaptive_t,
             watershed_detail: self.watershed_detail,
+            snap_scale: self.snap(self.snap_scale),
+            snap_palette: self.snap(self.palette.iter().map(Color::rgb_u8).collect()),
+            snap_max_colors: self.snap(self.max_colors.unwrap_or(0)),
+        }
+    }
+
+    /// `value` when clustering is [`Clustering::Snap`], else its default.
+    fn snap<T: Default>(&self, value: T) -> T {
+        if self.clustering == Clustering::Snap {
+            value
+        } else {
+            T::default()
         }
     }
 
@@ -373,6 +409,7 @@ impl FromStr for Clustering {
             "color-cluster" | "colorcluster" | "color" => Ok(Self::ColorCluster),
             "binary" | "bw" | "BW" => Ok(Self::Binary),
             "watershed" => Ok(Self::Watershed),
+            "snap" => Ok(Self::Snap),
             _ => Err(format!("unknown clustering {s}")),
         }
     }

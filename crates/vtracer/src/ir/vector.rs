@@ -87,4 +87,29 @@ impl VectorDoc {
             shapes: Vec::new(),
         }
     }
+
+    /// Shrink the document by an integer factor: every coordinate and the
+    /// canvas size are divided by `factor`. Used to map geometry traced on an
+    /// upscaled working image back to source pixels.
+    pub fn downscale(&mut self, factor: u32) {
+        if factor <= 1 {
+            return;
+        }
+        let f = factor as f64;
+        let s = |p: PointF64| PointF64 { x: p.x / f, y: p.y / f };
+        for shape in &mut self.shapes {
+            for sub in &mut shape.path.subpaths {
+                for cmd in &mut sub.commands {
+                    *cmd = match *cmd {
+                        PathCmd::MoveTo(p) => PathCmd::MoveTo(s(p)),
+                        PathCmd::LineTo(p) => PathCmd::LineTo(s(p)),
+                        PathCmd::CubicTo(a, b, c) => PathCmd::CubicTo(s(a), s(b), s(c)),
+                        PathCmd::Close => PathCmd::Close,
+                    };
+                }
+            }
+        }
+        self.width /= factor;
+        self.height /= factor;
+    }
 }

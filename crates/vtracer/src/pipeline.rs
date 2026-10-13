@@ -112,6 +112,9 @@ impl Pipeline {
         }
 
         let mut doc = self.compositing.compose_with(&seg, &self.curve_passes, ctx)?;
+        // Back to source pixels if the frontend traced an upscaled image.
+        // Before the optimizers, so coordinate rounding happens at final scale.
+        doc.downscale(seg.scale);
 
         let total = self.optimizers.len().max(1);
         for (i, pass) in self.optimizers.iter().enumerate() {

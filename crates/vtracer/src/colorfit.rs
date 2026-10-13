@@ -9,7 +9,7 @@
 //!   shape count for free.
 
 mod merge;
-mod oklab;
+pub(crate) mod oklab;
 mod palette;
 mod quantize;
 
