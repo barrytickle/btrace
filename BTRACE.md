@@ -105,7 +105,8 @@ http://127.0.0.1:8765 and opens it.
   zoom, drag to pan. **Outlines** (toolbar toggle, O) draws every path edge
   as a dashed guide; it is never part of the SVG.
 - **Remove tool (R):** click a region to remove it, Shift-click to remove its
-  whole colour; Ctrl+Z undoes.
+  whole colour. Removals show in the top bar with Undo (Ctrl+Z) and Clear,
+  in both Guided and Fine-tune.
 - **Keys:** V cycles views, H pan, O outlines, 0 fit, +/- zoom, Ctrl+S
   download, Space-drag pans in any tool.
 

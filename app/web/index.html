@@ -16,6 +16,11 @@
     <button id="open" class="btn">Open image…</button>
     <input id="file" type="file" accept="image/*" hidden>
     <span id="filename" class="filename"></span>
+    <div class="removals" id="removals" role="group" aria-label="Removed shapes" hidden>
+      <span id="removedCount"></span>
+      <button id="undoRemove" class="btn small" title="Put back the last shape you removed (Ctrl+Z)">Undo</button>
+      <button id="clearRemove" class="btn small" title="Put back everything you removed">Clear</button>
+    </div>
     <div class="spacer"></div>
     <span id="status" class="status" aria-live="polite"></span>
     <button id="download" class="btn primary" disabled>Download SVG</button>
@@ -112,8 +117,7 @@
           </label>
           <p class="help" id="gClickHelp" hidden>
             Click a shape on the picture to remove it. Shift-click removes every shape of that colour
-            (handy for backgrounds showing through letters). <span id="gRemoved"></span>
-            <button id="gUndo" class="link" hidden>Undo</button>
+            (handy for backgrounds showing through letters). Undo is in the top bar.
           </p>
         </section>
 
@@ -215,13 +219,7 @@
           <h2>Background &amp; crop</h2>
           <label class="check"><input type="checkbox" id="removeBg"> Remove background</label>
           <p class="help">Removes the colour around the image's border.</p>
-          <div class="removed">
-            <span id="removedCount" class="muted">Use the Remove tool to click away regions.</span>
-            <div class="btns">
-              <button id="undoRemove" class="btn small" disabled title="Undo last removal (Ctrl+Z)">Undo</button>
-              <button id="clearRemove" class="btn small" disabled>Clear</button>
-            </div>
-          </div>
+          <p class="help">To remove particular shapes, pick <strong>Remove</strong> in the toolbar and click them. Undo is in the top bar.</p>
           <label class="check"><input type="checkbox" id="crop"> Crop to content</label>
           <label class="row indent" id="padRow"><span>Padding</span><output id="padOut">0 px</output></label>
           <input type="range" class="indent" id="pad" min="0" max="32" step="1" value="0" aria-label="Crop padding">

@@ -353,13 +353,8 @@ function removeAt(e) {
 
 function updateRemovals(render = true) {
   const n = state.removals.length;
-  ui.removedCount.textContent = n
-    ? `${n} removal${n === 1 ? "" : "s"}`
-    : "Use the Remove tool to click away regions.";
-  ui.removedCount.classList.toggle("muted", n === 0);
-  ui.undoRemove.disabled = ui.clearRemove.disabled = n === 0;
-  g.removed.textContent = n ? `${n} removed so far.` : "";
-  g.undo.hidden = n === 0;
+  ui.removedCount.textContent = `${n} removed`;
+  $("removals").hidden = n === 0;
   if (render) requestRender();
 }
 
@@ -502,7 +497,7 @@ window.addEventListener("keyup", (e) => {
 // so switching panels never loses anything.
 
 const g = {
-  crop: $("gCrop"), clickHelp: $("gClickHelp"), removed: $("gRemoved"), undo: $("gUndo"),
+  crop: $("gCrop"), clickHelp: $("gClickHelp"),
   colourTitle: $("gColourTitle"), colours: $("gColours"), found: $("gFound"),
   swatches: $("gSwatches"), stepper: $("gStepper"), fewer: $("gFewer"), count: $("gCount"), more: $("gMore"),
   detail: $("gDetail"), bw: $("gBw"), download: $("gDownload"), summary: $("gSummary"),
@@ -636,7 +631,6 @@ g.crop.onchange = () => {
   syncCrop();
   requestRender();
 };
-g.undo.onclick = () => ui.undoRemove.click();
 g.download.onclick = download;
 
 // Panel switch: Guided / Fine-tune.
