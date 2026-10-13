@@ -492,10 +492,9 @@ function picture({ split = true, hint = "", analysing = false, inline = false } 
   const removing = inline && S.tool === "remove";
   const tools = inline ? `<div class="tools" role="toolbar" aria-label="Clean-up tools">
       <button class="${S.tool === "compare" ? "on" : ""}" data-tool="compare" title="Compare with the original (V)"><svg viewBox="0 0 16 16"><path d="M8 2v12M2 3h12v10H2z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Compare</button>
-      <button class="${removing ? "on" : ""}" data-tool="remove" title="Click shapes to remove them (R)"><svg viewBox="0 0 16 16"><path d="M2 11l5-5 4 4-3 3H4zM7 6l3-3 4 4-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Remove shapes</button>
-      <button data-act="cleanBg" title="Remove the background"><svg viewBox="0 0 16 16"><path d="M2 2h12v12H2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>${S.bg === "keep" ? "Remove background" : "Background removed"}</button>
+      <button class="${removing ? "on" : ""}" data-tool="remove" title="Click anything to remove it, including the background (R)"><svg viewBox="0 0 16 16"><path d="M2 11l5-5 4 4-3 3H4zM7 6l3-3 4 4-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Remove</button>
     </div>` : "";
-  if (removing) hint = "Click a shape to remove it · Shift-click: every shape that colour · Esc to stop";
+  if (removing) hint = "Click anything to remove it, background too · Shift-click: every shape that colour · Esc to stop";
   return `<div class="canvas${removing ? " full" : ""}">
       <img src="${rasterURL}" alt="Original image" style="image-rendering:auto">
       ${tools}
@@ -725,10 +724,10 @@ const screens = {
       </div>
       <div class="eyebrow">Clean up</div>
       ${strays ? `<div class="why">${icon.spark}<span>Found <b>${strays} tiny stray shape${strays > 1 ? "s" : ""}</b> (specks from the PNG, near the corners). <button class="link" data-act="removeStrays">Remove ${strays > 1 ? "them" : "it"}</button></span></div>` : ""}
-      <button class="toggle${S.bg !== "keep" ? " on" : ""}" data-act="cleanBg"><span class="t"><strong>Remove background</strong><span>The white around the edges</span></span><span class="sw"></span></button>
+      ${kept ? `<div class="why">${icon.spark}<span>The <b>white background</b> can go: click it with Remove, or <button class="link" data-act="removeBg">remove it now</button>.</span></div>` : ""}
       <button class="toggle${trimmed ? " on" : ""}" data-toggle="trim" ${kept ? "disabled" : ""}><span class="t"><strong>Trim the empty space</strong><span>${kept ? "Remove the background first" : trimmed ? `Trimmed to ${size} px. Re-trims by itself as you remove shapes.` : "Fit the SVG to the drawing (dashed frame)"}</span></span><span class="sw"></span></button>
-      <button class="toggle${S.tool === "remove" ? " on" : ""}" data-tool="${S.tool === "remove" ? "compare" : "remove"}"><span class="t"><strong>Remove shapes by clicking</strong><span>Click anything on the picture that shouldn't be there. Shift-click removes every shape of that colour.</span></span><span class="sw"></span></button>
-      ${removedN ? `<div class="tally">${S.removed.size} shape${S.removed.size === 1 ? "" : "s"} removed <button class="btn" data-act="undoRemove">Undo</button><button class="btn" data-act="clearRemove">Clear</button></div>` : ""}
+      <button class="toggle${S.tool === "remove" ? " on" : ""}" data-tool="${S.tool === "remove" ? "compare" : "remove"}"><span class="t"><strong>Remove</strong><span>Click anything on the picture that shouldn't be there, including the background. Shift-click removes every shape of that colour.</span></span><span class="sw"></span></button>
+      ${removedN ? `<div class="tally">${S.removedStack.flat().length} removed <button class="btn" data-act="undoRemove">Undo</button><button class="btn" data-act="clearRemove">Clear</button></div>` : ""}
       <div class="eyebrow">Your choices</div>
       <div class="did">
         ${row({ logo: "Logo or icon", illustration: "Illustration", detailed: "Photo or detailed art", bw: "Black & white drawing" }[S.type], "Image type", 1)}
@@ -805,9 +804,11 @@ const screens = {
 function render() { screens[S.screen](); }
 function removeShapes(ids) {
   if (!ids.length) return;
-  ids.forEach((id) => S.removed.add(id));
+  // The background is a setting, not a shape: removing it switches the
+  // setting, but it still goes in the history so Undo puts it back.
+  ids.forEach((id) => (id === "bg" ? (S.bg = "remove") : S.removed.add(id)));
   S.removedStack.push(ids);
-  toast(`Removed ${ids.length} shape${ids.length > 1 ? "s" : ""} · Undo is in the panel`);
+  toast(ids[0] === "bg" ? "Removed the background · Undo is in the panel" : `Removed ${ids.length} shape${ids.length > 1 ? "s" : ""} · Undo is in the panel`);
   render();
 }
 function go(screen) {
@@ -843,7 +844,7 @@ document.addEventListener("click", (e) => {
   const shape = e.target.closest(".removing [data-s]");
   if (shape) {
     const id = shape.dataset.s;
-    if (id === "bg") { S.bg = "remove"; S.trim = true; render(); return; }
+    if (id === "bg") { removeShapes(["bg"]); return; }
     if (e.shiftKey) {
       // Every visible shape with the same fill.
       const fill = shape.getAttribute("fill");
@@ -914,8 +915,12 @@ document.addEventListener("click", (e) => {
     cleanBg: () => { S.bg = S.bg === "keep" ? "remove" : "keep"; if (S.bg !== "keep") S.trim = true; render(); },
     resetColours: () => { S.recolor = {}; render(); },
     removeStrays: () => { removeShapes(SPECKS.filter((id) => !S.removed.has(id))); },
-    undoRemove: () => { const last = S.removedStack.pop(); last?.forEach((id) => S.removed.delete(id)); render(); },
-    clearRemove: () => { S.removedStack = []; S.removed = new Set(); render(); },
+    undoRemove: () => { const last = S.removedStack.pop(); last?.forEach((id) => (id === "bg" ? (S.bg = "keep") : S.removed.delete(id))); render(); },
+    clearRemove: () => {
+      if (S.removedStack.some((ids) => ids.includes("bg"))) S.bg = "keep";
+      S.removedStack = []; S.removed = new Set(); render();
+    },
+    removeBg: () => removeShapes(["bg"]),
     reviewBack: () => { if (S.from === "wizard") { S.step = 4; go("wizard"); } else go(S.from); },
     prev: () => { S.step = Math.max(1, S.step - 1); render(); },
     save: () => toast(S.screen === "start" ? "Open an image first" : "Save as: summit-badge.svg"),
