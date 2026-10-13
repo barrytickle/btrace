@@ -271,6 +271,10 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 .quick .spacer { flex: 1; }
 .quick .btn { padding: 6px 12px; font-size: 13px; }
 
+/* batch editing */
+.editing { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--amber-soft); color: var(--ink); font-size: 13.5px; }
+.editwith { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); flex-wrap: wrap; }
+
 /* review: trim */
 .trimrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .trimrow.stale { border-color: var(--amber); background: var(--amber-soft); }
@@ -410,7 +414,10 @@ function badge({ bg = true, colours = 4, trim = false, mono = false, shade = fal
   let navy = recolor.navy ?? C.navy, teal = recolor.teal ?? C.teal, orange = recolor.orange ?? C.orange, cream = recolor.cream ?? C.cream;
   if (colours <= 3) teal = navy;          // teal merges into navy
   if (colours <= 2) cream = orange;       // cream merges into orange
-  if (mono) navy = teal = orange = "#111", cream = "#fff";
+  // Black & white by lightness: the dark disc and snow become ink, the
+  // light sun, mountain and base bar become paper.
+  if (mono) navy = cream = "#111", teal = orange = "#fff";
+  const barFill = mono ? "#fff" : cream;
   const grad = shade ? `<defs><radialGradient id="g" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#34477c"/><stop offset="1" stop-color="${C.navy}"/></radialGradient></defs>` : "";
   const ring = shade ? "url(#g)" : navy;
   // Every shape is tagged (data-s) so the Review tools can remove it. The two
@@ -422,7 +429,7 @@ function badge({ bg = true, colours = 4, trim = false, mono = false, shade = fal
     ["mountain", `<path d="M78 140 L118 82 L134 104 L148 88 L184 140 Z" fill="${teal}"/>`],
     ["snow1", `<path d="M118 82 L106 99 L114 96 L120 103 L126 94 Z" fill="${cream}"/>`],
     ["snow2", `<path d="M148 88 L141 97 L147 95 L152 100 Z" fill="${cream}"/>`],
-    ["bar", `<rect x="78" y="140" width="106" height="10" rx="2" fill="${cream}"/>`],
+    ["bar", `<rect x="78" y="140" width="106" height="10" rx="2" fill="${barFill}"/>`],
     ["speck1", `<circle cx="190" cy="50" r="3.2" fill="${navy}"/>`],
     ["speck2", `<circle cx="73" cy="158" r="2.6" fill="${orange}"/>`],
   ];
@@ -460,7 +467,7 @@ const uri = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(sv
 // The "original": the badge rasterised small, then shown large, so it looks
 // like a soft, low-resolution PNG next to the crisp trace.
 let rasterURL = "";
-function makeRaster(done) {
+function makeRaster(done, it = null) {
   const img = new Image();
   img.onload = () => {
     const cv = document.createElement("canvas");
@@ -470,7 +477,7 @@ function makeRaster(done) {
     rasterURL = cv.toDataURL("image/png");
     done();
   };
-  img.src = uri(badge({ bg: true, colours: 5 }));
+  img.src = uri(it ? itemOriginal(it) : badge({ bg: true, colours: 5 }));
 }
 
 /* ---------------------------------------------------------------------------
@@ -523,7 +530,12 @@ function makeBatch() {
     { name: "river-icon.png", cols: 3, recolor: { navy: "#1f4e8c", teal: "#3fa7d6" } },
   ].map((it) => ({ include: true, open: !!it.flag, trim: !it.keepBg, ...it }));
 }
-const itemTrace = (it) => badge({ bg: !!it.keepBg, colours: it.mono ? 2 : it.cols, mono: !!it.mono, recolor: it.recolor ?? {}, trim: it.trim && !it.keepBg, removed: new Set(SPECKS) });
+// Thumbnails are trimmed; the side-by-side pair uses the full canvas for
+// both, so the SVG lines up with its original.
+const itemTrace = (it, { full = false } = {}) => badge({
+  bg: !!it.keepBg, colours: it.mono ? 2 : it.cols, mono: !!it.mono, recolor: it.recolor ?? {},
+  trim: !full && it.trim && !it.keepBg, removed: it.removed ?? new Set(SPECKS),
+});
 const itemOriginal = (it) => badge({ bg: true, colours: 5, mono: !!it.mono, recolor: it.recolor ?? {} });
 
 /* Palette ladder: which colours each row holds (plus transparency when the
@@ -813,8 +825,9 @@ const screens = {
     foot.innerHTML = `<button class="btn" data-act="reviewBack">← Back</button>
       <button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} empty space</button>
       <div class="spacer"></div>
-      <button class="btn" data-act="toast:SVG code copied, ready to paste">Copy SVG</button>
-      <button class="btn primary" data-act="save">Save SVG</button>`;
+      ${S.editing != null
+        ? `<button class="btn" data-act="cancelEdit">Cancel</button><button class="btn primary" data-act="finishEdit">Done · back to batch</button>`
+        : `<button class="btn" data-act="toast:SVG code copied, ready to paste">Copy SVG</button><button class="btn primary" data-act="save">Save SVG</button>`}`;
   },
 
   advanced() {
@@ -890,6 +903,7 @@ const screens = {
             it.keepBg ? "background kept" : "background removed",
             it.keepBg ? "" : it.trim ? "trimmed" : "not trimmed",
             it.mono ? "black & white" : "",
+            it.edited ? "edited by you" : "",
           ].filter(Boolean).join(" · ");
           return `<details class="acc${it.flag && it.include ? " flag" : ""}${it.include ? "" : " skip"}" data-i="${i}" ${it.open ? "open" : ""}>
             <summary>
@@ -902,14 +916,18 @@ const screens = {
               ${it.flag ? `<div class="why">${icon.spark}<span>${it.flag} <button class="link" data-item-act="fix" data-i="${i}">${it.fix}</button> · <button class="link" data-item-act="dismiss" data-i="${i}">It's fine</button></span></div>` : ""}
               <div class="pair">
                 <figure><span class="pv"><img src="${uri(itemOriginal(it))}" alt="" style="filter:blur(.6px)"></span><figcaption>Original</figcaption></figure>
-                <figure><span class="pv checker"><img src="${uri(itemTrace(it))}" alt=""></span><figcaption>SVG</figcaption></figure>
+                <figure><span class="pv checker"><img src="${uri(itemTrace(it, { full: true }))}" alt=""></span><figcaption>SVG${it.trim && !it.keepBg ? " · trims to the drawing" : ""}</figcaption></figure>
               </div>
               <div class="quick">
                 <button class="btn" data-item-act="bg" data-i="${i}">${it.keepBg ? "Remove background" : "Keep background"}</button>
                 <button class="btn" data-item-act="trim" data-i="${i}" ${it.keepBg ? "disabled" : ""}>${it.trim ? "Undo trim" : "Trim"}</button>
                 <button class="btn" data-item-act="include" data-i="${i}">${it.include ? "Skip this one" : "Include it"}</button>
                 <span class="spacer"></span>
-                <button class="btn ghost" data-item-act="open" data-i="${i}">Open in full Review →</button>
+                <span class="editwith">Edit with
+                  <button class="btn" data-item-act="edit-wizard" data-i="${i}">Guided</button>
+                  <button class="btn" data-item-act="edit-advanced" data-i="${i}">Advanced</button>
+                  <button class="btn" data-item-act="edit-review" data-i="${i}">Review</button>
+                </span>
               </div>
             </div>
           </details>`;
@@ -937,7 +955,55 @@ const screens = {
 /* ---------------------------------------------------------------------------
    Wiring
 --------------------------------------------------------------------------- */
-function render() { screens[S.screen](); }
+function render() {
+  screens[S.screen]();
+  // While editing one image of a batch, say so on every screen of the flow.
+  if (S.editing != null && ["wizard", "advanced", "review"].includes(S.screen)) {
+    const it = S.items[S.editing];
+    panel.insertAdjacentHTML("afterbegin", `<div class="editing"><span>Editing <b>${it.name}</b> from your batch (${S.editing + 1} of ${S.items.length})</span><button class="link" data-act="cancelEdit">Cancel</button></div>`);
+  }
+}
+
+/* Batch editing: load one image's settings into the normal flow, and write
+   them back when the user is done. */
+function startEdit(i, where) {
+  const it = S.items[i];
+  Object.assign(S, {
+    editing: i,
+    type: it.mono ? "bw" : "logo",
+    bg: it.keepBg ? "keep" : "remove",
+    trim: it.trim && !it.keepBg,
+    colours: it.mono ? 2 : it.cols,
+    recolor: { ...(it.recolor ?? {}) },
+    removed: new Set(it.removed ?? SPECKS),
+    removedStack: [],
+    trimBox: null,
+    lines: true,
+    tool: "compare",
+    step: 1,
+    from: where === "review" ? "batch" : where,
+  });
+  makeRaster(() => go(where), it);
+}
+function finishEdit() {
+  const it = S.items[S.editing];
+  Object.assign(it, {
+    mono: S.type === "bw",
+    keepBg: S.bg === "keep",
+    trim: S.trim && S.bg !== "keep",
+    cols: S.type === "bw" ? 2 : S.colours,
+    recolor: { ...S.recolor },
+    removed: new Set(S.removed),
+    flag: null,
+    edited: true,
+  });
+  toast(`Saved your changes to ${it.name}`);
+  endEdit();
+}
+function endEdit() {
+  S.editing = null;
+  makeRaster(() => { S.screen = "breview"; render(); });
+}
 function removeShapes(ids) {
   if (!ids.length) return;
   // The background is a setting, not a shape: removing it switches the
@@ -994,7 +1060,7 @@ document.addEventListener("click", (e) => {
     else if (a === "bg") { it.keepBg = !it.keepBg; it.trim = !it.keepBg; }
     else if (a === "trim") it.trim = !it.trim;
     else if (a === "include") { it.include = !it.include; if (!it.include) it.open = false; }
-    else if (a === "open") { S.from = "batch"; S.tool = "compare"; S.trimBox = null; go("review"); return; }
+    else if (a.startsWith("edit-")) { startEdit(+ia.dataset.i, a.slice(5)); return; }
     render(); return;
   }
   const tool = e.target.closest("[data-tool]");
@@ -1061,7 +1127,9 @@ document.addEventListener("click", (e) => {
     paste: openImage,
     batch: () => go("batch"),
     start: () => go("start"),
-    mode: () => go("mode"),
+    mode: () => (S.editing != null ? endEdit() : go("mode")),
+    cancelEdit: () => { toast("No changes saved"); endEdit(); },
+    finishEdit: () => finishEdit(),
     auto: () => { Object.assign(S, RECOMMENDED, { autoUndo: {}, removed: new Set(SPECKS), removedStack: [] }); go("auto"); },
     wizard: () => { S.step = 1; go("wizard"); },
     advanced: () => go("advanced"),
@@ -1094,7 +1162,7 @@ document.addEventListener("click", (e) => {
     removeBg: () => removeShapes(["bg"]),
     reviewBack: () => {
       if (S.from === "wizard") { S.step = 4; go("wizard"); }
-      else if (S.from === "batch") { S.screen = "breview"; render(); }
+      else if (S.from === "batch") { if (S.editing != null) endEdit(); else { S.screen = "breview"; render(); } }
       else go(S.from);
     },
     prev: () => { S.step = Math.max(1, S.step - 1); render(); },
