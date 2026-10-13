@@ -243,6 +243,34 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 .pal { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .chip-c.big:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* batch review accordion */
+.acclist { width: min(100%, 640px); display: grid; gap: 8px; align-self: start; }
+.acchead { display: flex; justify-content: space-between; align-items: baseline; }
+.acchead b { font-family: var(--display); font-size: 20px; }
+.acctools { font-size: 13px; color: var(--ink-3); }
+.acc { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.acc.flag { border-color: var(--amber); }
+.acc.skip { opacity: .6; }
+.acc summary { list-style: none; display: grid; grid-template-columns: 56px minmax(0, 1fr) auto 16px; gap: 12px; align-items: center; padding: 8px 12px 8px 8px; cursor: pointer; }
+.acc summary::-webkit-details-marker { display: none; }
+.acc summary:hover { background: var(--sunk); }
+.acc .th { width: 56px; height: 44px; border-radius: 7px; overflow: hidden; }
+.acc .th img { width: 100%; height: 100%; object-fit: contain; }
+.acc .nm b { font-weight: 600; font-size: 14px; display: block; }
+.acc .nm small { color: var(--ink-3); font-size: 12.5px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acc .chev { color: var(--ink-3); transition: transform .15s; font-size: 18px; line-height: 1; }
+.acc[open] .chev { transform: rotate(90deg); }
+.accbody { padding: 4px 12px 12px; display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pair figure { margin: 0; display: grid; gap: 4px; }
+.pair .pv { aspect-ratio: 13 / 10; border-radius: 9px; background: var(--sunk); overflow: hidden; display: grid; place-items: center; border: 1px solid var(--line); }
+.pair .pv img { width: 100%; height: 100%; object-fit: contain; }
+.pair figcaption { font-size: 12px; color: var(--ink-3); }
+.checker, .pair .pv.checker { background-color: var(--checker-b); background-image: linear-gradient(45deg, var(--checker-a) 25%, transparent 25%, transparent 75%, var(--checker-a) 75%), linear-gradient(45deg, var(--checker-a) 25%, transparent 25%, transparent 75%, var(--checker-a) 75%); background-size: 12px 12px; background-position: 0 0, 6px 6px; }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.quick .spacer { flex: 1; }
+.quick .btn { padding: 6px 12px; font-size: 13px; }
+
 /* review: trim */
 .trimrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .trimrow.stale { border-color: var(--amber); background: var(--amber-soft); }
@@ -308,6 +336,7 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
     <button data-go="wizard">Guided</button>
     <button data-go="advanced">Advanced</button>
     <button data-go="batch">Batch</button>
+    <button data-go="breview">Batch review</button>
   </div>
 </div>
 
@@ -477,6 +506,25 @@ function current() {
     recolor: S.recolor,
   });
 }
+
+/* Batch demo: six icons from the same sample, recoloured so they differ.
+   PixPath flags the ones worth a look, with a suggested fix. */
+function makeBatch() {
+  return [
+    { name: "summit-badge.png", cols: 4 },
+    { name: "summit-mono.png", cols: 2, mono: true,
+      flag: "Only <b>2 colours</b> found. Is this a black &amp; white drawing? B&amp;W mode gives cleaner lines.",
+      fix: "Treat as black & white" },
+    { name: "summit-small.png", cols: 3, recolor: { teal: "#2f9e5f" } },
+    { name: "trail-icon.png", cols: 3, recolor: { navy: "#24526b", teal: "#4cae7a" } },
+    { name: "camp-icon.png", cols: 4, keepBg: true, recolor: { navy: "#4a2c55", orange: "#e4572e" },
+      flag: "The background was <b>left in</b>: the border has two colours, so PixPath wasn't sure it's a background.",
+      fix: "Remove the background" },
+    { name: "river-icon.png", cols: 3, recolor: { navy: "#1f4e8c", teal: "#3fa7d6" } },
+  ].map((it) => ({ include: true, open: !!it.flag, trim: !it.keepBg, ...it }));
+}
+const itemTrace = (it) => badge({ bg: !!it.keepBg, colours: it.mono ? 2 : it.cols, mono: !!it.mono, recolor: it.recolor ?? {}, trim: it.trim && !it.keepBg, removed: new Set(SPECKS) });
+const itemOriginal = (it) => badge({ bg: true, colours: 5, mono: !!it.mono, recolor: it.recolor ?? {} });
 
 /* Palette ladder: which colours each row holds (plus transparency when the
    background is removed). Rows past 4 add shades the image barely uses. */
@@ -731,7 +779,7 @@ const screens = {
     const kb = (new Blob([svg]).size / 1024).toFixed(1);
     const strays = SPECKS.filter((id) => !S.removed.has(id)).length;
     const removedN = S.removedStack.length;
-    const fromName = { auto: "Automatic", wizard: "Guided", advanced: "Advanced" }[S.from] ?? "Guided";
+    const fromName = { auto: "Automatic", wizard: "Guided", advanced: "Advanced", batch: "the batch" }[S.from] ?? "Guided";
     const row = (title, what, step) => `<div class="row"><span class="ok">✓</span><span><b>${title}</b><small>${what}</small></span><button class="btn ghost" data-change="${step}">Change</button></div>`;
     panel.innerHTML = `<h2>Review</h2>
       <p class="sub">Check the result before saving. Drag the divider to compare with your original.</p>
@@ -815,12 +863,74 @@ const screens = {
         <p>Each image is analysed on its own: background, trimming and colours are decided per image.</p></button>
       <button class="mode" data-act="toast:The guided questions are asked once and applied to all six"><strong>Same answers for all</strong><span></span>
         <p>Answer the guided questions once; they apply to every image.</p></button>
-      <div class="tip">${icon.bulb}<span>Click any image to check or fix it on its own before saving.</span></div>`;
-    foot.innerHTML = `<button class="btn" data-act="start">← Back</button><div class="spacer"></div><button class="btn primary" id="saveall" data-act="toast:Pick a folder: all 6 SVGs are saved there (never overwriting)" ${S.batchDone < 6 ? "disabled" : ""}>Save all 6 to a folder…</button>`;
+      <div class="tip">${icon.bulb}<span>When tracing finishes you'll review them all together before anything is saved.</span></div>`;
+    foot.innerHTML = `<button class="btn" data-act="start">← Back</button><div class="spacer"></div><button class="btn primary" data-act="breview" ${S.batchDone < 6 ? "disabled" : ""}>${S.batchDone < 6 ? `Tracing ${S.batchDone + 1} of 6…` : "Review all 6 →"}</button>`;
     if (S.batchDone < 6) {
       clearTimeout(S.batchTimer);
       S.batchTimer = setTimeout(() => { S.batchDone++; if (S.screen === "batch") render(); }, 650);
     }
+  },
+
+  // Batch review: every image as an accordion row, flagged ones first-open.
+  breview() {
+    stepper.hidden = true;
+    S.items ??= makeBatch();
+    const its = S.items;
+    const look = its.filter((it) => it.include && it.flag).length;
+    const skipped = its.filter((it) => !it.include).length;
+    const ready = its.length - look - skipped;
+    const shown = its.map((it, i) => [it, i]).filter(([it]) => S.bFilter !== "look" || it.flag);
+    stage.innerHTML = `<div class="acclist">
+        <div class="acchead"><b>${its.length} images</b>
+          <span class="acctools"><button class="link" data-act="expandAll">Expand all</button> · <button class="link" data-act="collapseAll">Collapse all</button></span></div>
+        ${shown.map(([it, i]) => {
+          const state = !it.include ? ["", "Skipped"] : it.flag ? ["run", "Needs a look"] : ["done", "Ready"];
+          const what = [
+            `${it.mono ? 2 : it.cols} colours`,
+            it.keepBg ? "background kept" : "background removed",
+            it.keepBg ? "" : it.trim ? "trimmed" : "not trimmed",
+            it.mono ? "black & white" : "",
+          ].filter(Boolean).join(" · ");
+          return `<details class="acc${it.flag && it.include ? " flag" : ""}${it.include ? "" : " skip"}" data-i="${i}" ${it.open ? "open" : ""}>
+            <summary>
+              <span class="th checker"><img src="${uri(itemTrace(it))}" alt=""></span>
+              <span class="nm"><b>${it.name}</b><small>${what}</small></span>
+              <span class="state ${state[0]}">${state[1]}</span>
+              <span class="chev" aria-hidden="true">›</span>
+            </summary>
+            <div class="accbody">
+              ${it.flag ? `<div class="why">${icon.spark}<span>${it.flag} <button class="link" data-item-act="fix" data-i="${i}">${it.fix}</button> · <button class="link" data-item-act="dismiss" data-i="${i}">It's fine</button></span></div>` : ""}
+              <div class="pair">
+                <figure><span class="pv"><img src="${uri(itemOriginal(it))}" alt="" style="filter:blur(.6px)"></span><figcaption>Original</figcaption></figure>
+                <figure><span class="pv checker"><img src="${uri(itemTrace(it))}" alt=""></span><figcaption>SVG</figcaption></figure>
+              </div>
+              <div class="quick">
+                <button class="btn" data-item-act="bg" data-i="${i}">${it.keepBg ? "Remove background" : "Keep background"}</button>
+                <button class="btn" data-item-act="trim" data-i="${i}" ${it.keepBg ? "disabled" : ""}>${it.trim ? "Undo trim" : "Trim"}</button>
+                <button class="btn" data-item-act="include" data-i="${i}">${it.include ? "Skip this one" : "Include it"}</button>
+                <span class="spacer"></span>
+                <button class="btn ghost" data-item-act="open" data-i="${i}">Open in full Review →</button>
+              </div>
+            </div>
+          </details>`;
+        }).join("") || `<p class="sub" style="margin:8px 0">Nothing needs a look. <button class="link" data-act="bfilterAll">Show all</button></p>`}
+      </div>`;
+    panel.innerHTML = `<h2>Review the batch</h2>
+      <p class="sub">Check each image before saving. Open any row to compare it with its original or fix it.</p>
+      <div class="facts" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="fact"><b>${ready}</b><small>ready</small></div>
+        <div class="fact"><b>${look}</b><small>need a look</small></div>
+        <div class="fact"><b>${skipped}</b><small>skipped</small></div>
+      </div>
+      <div class="seg wide" role="group" aria-label="Show">
+        <button class="${S.bFilter !== "look" ? "on" : ""}" data-act="bfilterAll">All ${its.length}</button>
+        <button class="${S.bFilter === "look" ? "on" : ""}" data-act="bfilterLook">Needs a look ${look}</button>
+      </div>
+      ${look ? `<div class="why">${icon.spark}<span>PixPath opened the ${look} image${look > 1 ? "s" : ""} worth checking. Everything else looked right.</span></div>` : `<div class="why">${icon.check}<span>All checked. Ready to save.</span></div>`}
+      <div class="tip">${icon.bulb}<span>Files are named after the originals (camp-icon.png → camp-icon.svg) and never overwrite anything in the folder.</span></div>`;
+    const n = its.length - skipped;
+    foot.innerHTML = `<button class="btn" data-act="batchBack">← Back</button><div class="spacer"></div>
+      <button class="btn primary" data-act="toast:Pick a folder: ${n} SVGs are saved there" ${n ? "" : "disabled"}>Save ${n} to a folder…</button>`;
   },
 };
 
@@ -840,7 +950,7 @@ function removeShapes(ids) {
 function go(screen) {
   S.screen = screen;
   if (screen === "wizard") S.step = S.step || 1;
-  if (screen === "batch") S.batchDone = 0;
+  if (screen === "batch") { S.batchDone = 0; S.items = makeBatch(); }
   render();
   document.getElementById("win").scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
@@ -866,12 +976,27 @@ document.addEventListener("click", (e) => {
   if (go_) {
     const s = go_.dataset.go;
     if (s === "wizard") S.step = 1;
+    if (s === "breview") { S.items = makeBatch(); S.bFilter = "all"; }
     // Same defaults as choosing Fully automatic from "How would you like to trace it?"
     if (s === "auto") Object.assign(S, RECOMMENDED, { autoUndo: {}, removed: new Set(SPECKS), removedStack: [], trimBox: null });
     go(s);
     return;
   }
 
+  const ia = e.target.closest("[data-item-act]");
+  if (ia) {
+    const it = S.items[+ia.dataset.i];
+    const a = ia.dataset.itemAct;
+    if (a === "fix") {
+      if (it.mono) it.cols = 2; else it.keepBg = false, it.trim = true;
+      it.flag = null; toast(`${it.name}: ${it.fix.toLowerCase()}`);
+    } else if (a === "dismiss") it.flag = null;
+    else if (a === "bg") { it.keepBg = !it.keepBg; it.trim = !it.keepBg; }
+    else if (a === "trim") it.trim = !it.trim;
+    else if (a === "include") { it.include = !it.include; if (!it.include) it.open = false; }
+    else if (a === "open") { S.from = "batch"; S.tool = "compare"; S.trimBox = null; go("review"); return; }
+    render(); return;
+  }
   const tool = e.target.closest("[data-tool]");
   if (tool) { S.tool = tool.dataset.tool; render(); return; }
   const shape = e.target.closest(".removing [data-s]");
@@ -953,6 +1078,12 @@ document.addEventListener("click", (e) => {
     },
     untrim: () => { S.trim = false; S.trimBox = null; render(); },
     cleanBg: () => { S.bg = S.bg === "keep" ? "remove" : "keep"; if (S.bg !== "keep") S.trim = true; render(); },
+    breview: () => { S.bFilter = "all"; go("breview"); },
+    batchBack: () => { S.screen = "batch"; render(); },
+    bfilterAll: () => { S.bFilter = "all"; render(); },
+    bfilterLook: () => { S.bFilter = "look"; render(); },
+    expandAll: () => { S.items.forEach((it) => (it.open = true)); render(); },
+    collapseAll: () => { S.items.forEach((it) => (it.open = false)); render(); },
     resetColours: () => { S.recolor = {}; render(); },
     removeStrays: () => { removeShapes(SPECKS.filter((id) => !S.removed.has(id))); },
     undoRemove: () => { const last = S.removedStack.pop(); last?.forEach((id) => (id === "bg" ? (S.bg = "keep") : S.removed.delete(id))); render(); },
@@ -961,7 +1092,11 @@ document.addEventListener("click", (e) => {
       S.removedStack = []; S.removed = new Set(); render();
     },
     removeBg: () => removeShapes(["bg"]),
-    reviewBack: () => { if (S.from === "wizard") { S.step = 4; go("wizard"); } else go(S.from); },
+    reviewBack: () => {
+      if (S.from === "wizard") { S.step = 4; go("wizard"); }
+      else if (S.from === "batch") { S.screen = "breview"; render(); }
+      else go(S.from);
+    },
     prev: () => { S.step = Math.max(1, S.step - 1); render(); },
     save: () => toast(S.screen === "start" ? "Open an image first" : "Save as: summit-badge.svg"),
     bounds: () => { S.bounds = !S.bounds; render(); },
@@ -973,6 +1108,12 @@ document.addEventListener("click", (e) => {
     },
   })[a]?.();
 });
+
+// Accordion rows remember whether they're open across re-renders.
+document.addEventListener("toggle", (e) => {
+  const d = e.target.closest?.("details.acc");
+  if (d && S.items) S.items[+d.dataset.i].open = d.open;
+}, true);
 
 document.addEventListener("input", (e) => {
   const rc = e.target.closest("[data-recolor]");
