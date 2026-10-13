@@ -1190,9 +1190,12 @@ document.addEventListener("click", (e) => {
   }
   const change = e.target.closest("[data-change]");
   if (change) {
-    // Back to where that decision lives in the mode the user came from.
-    if (S.from === "wizard") { S.step = +change.dataset.change; go("wizard"); }
-    else go(S.from === "advanced" ? "advanced" : "auto");
+    // Whatever mode the user came from, Change opens that question in the
+    // Guided wizard (with their current choices filled in) and carries on
+    // through the remaining steps back to Review.
+    S.step = +change.dataset.change;
+    S.from = "wizard";
+    go("wizard");
     return;
   }
 
