@@ -19,8 +19,8 @@
   --accent-soft: #dff4ee;
   --amber: #c98a12;
   --amber-soft: #fbf0d6;
-  --checker-a: #eef2f1;
-  --checker-b: #ffffff;
+  --checker-a: #d5dcda;
+  --checker-b: #f7f9f8;
   --shadow: 0 1px 2px rgba(21,33,31,.06), 0 8px 28px rgba(21,33,31,.08);
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "Figtree", "Segoe UI", system-ui, sans-serif;
@@ -30,7 +30,7 @@
   :root:not([data-theme="light"]) {
     --bg: #0d1413; --win: #121b1a; --panel: #172221; --sunk: #1c2927; --line: #26332f; --line-2: #33433f;
     --ink: #e6efec; --ink-2: #a7b7b2; --ink-3: #71837e; --accent: #2cc9a8; --accent-ink: #062920; --accent-soft: #163a33;
-    --amber: #e7b04a; --amber-soft: #3a2f17; --checker-a: #1f2b29; --checker-b: #172221;
+    --amber: #e7b04a; --amber-soft: #3a2f17; --checker-a: #2b3936; --checker-b: #18211f;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
     color-scheme: dark;
   }
@@ -38,7 +38,7 @@
 :root[data-theme="dark"] {
   --bg: #0d1413; --win: #121b1a; --panel: #172221; --sunk: #1c2927; --line: #26332f; --line-2: #33433f;
   --ink: #e6efec; --ink-2: #a7b7b2; --ink-3: #71837e; --accent: #2cc9a8; --accent-ink: #062920; --accent-soft: #163a33;
-  --amber: #e7b04a; --amber-soft: #3a2f17; --checker-a: #1f2b29; --checker-b: #172221;
+  --amber: #e7b04a; --amber-soft: #3a2f17; --checker-a: #2b3936; --checker-b: #18211f;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
   color-scheme: dark;
 }
@@ -108,7 +108,7 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
   position: relative; width: min(100%, 560px); aspect-ratio: 13 / 10; border-radius: 12px; overflow: hidden;
   background-color: var(--checker-b);
   background-image: linear-gradient(45deg, var(--checker-a) 25%, transparent 25%, transparent 75%, var(--checker-a) 75%), linear-gradient(45deg, var(--checker-a) 25%, transparent 25%, transparent 75%, var(--checker-a) 75%);
-  background-size: 18px 18px; background-position: 0 0, 9px 9px; border: 1px solid var(--line);
+  background-size: 20px 20px; background-position: 0 0, 10px 10px; border: 1px solid var(--line);
 }
 .canvas img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .canvas .after { clip-path: inset(0 0 0 50%); }
@@ -242,6 +242,13 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 .chip-c input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 .pal { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .chip-c.big:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* review: trim */
+.trimrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.trimrow.stale { border-color: var(--amber); background: var(--amber-soft); }
+.trimrow .t strong { display: block; font-size: 15px; }
+.trimrow .t span { font-size: 13px; color: var(--ink-2); }
+.trimrow .acts { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* review: clean-up tools */
 .canvas .vec { position: absolute; inset: 0; }
@@ -405,6 +412,11 @@ const GEO = {
   snow1: [106, 82, 126, 103], snow2: [141, 88, 152, 100], bar: [78, 140, 184, 150],
   speck1: [186.8, 46.8, 193.2, 53.2], speck2: [70.4, 155.4, 75.6, 160.6],
 };
+/// The trim in force: the snapshot taken by the last Trim (Review), or, before
+/// any snapshot, the drawing's current extent.
+function currentTrim() { return S.trimBox ?? trimBox(S.removed); }
+const sameBox = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 0.01);
+
 /// The trimmed canvas: the union of the visible shapes (whole canvas if none).
 function trimBox(removed = new Set()) {
   const ids = Object.keys(GEO).filter((id) => !removed.has(id));
@@ -490,12 +502,15 @@ function picture({ split = true, hint = "", analysing = false, inline = false } 
   const after = uri(current());
   const bounds = S.bounds || (S.trim && S.bg !== "keep") ? boundsOverlay() : "";
   const removing = inline && S.tool === "remove";
+  const full = inline && (S.tool === "preview" || removing);
   const tools = inline ? `<div class="tools" role="toolbar" aria-label="Clean-up tools">
       <button class="${S.tool === "compare" ? "on" : ""}" data-tool="compare" title="Compare with the original (V)"><svg viewBox="0 0 16 16"><path d="M8 2v12M2 3h12v10H2z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Compare</button>
+      <button class="${S.tool === "preview" ? "on" : ""}" data-tool="preview" title="Just the SVG, on a transparency grid (P)"><svg viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>Preview</button>
       <button class="${removing ? "on" : ""}" data-tool="remove" title="Click anything to remove it, including the background (R)"><svg viewBox="0 0 16 16"><path d="M2 11l5-5 4 4-3 3H4zM7 6l3-3 4 4-3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Remove</button>
     </div>` : "";
   if (removing) hint = "Click anything to remove it, background too · Shift-click: every shape that colour · Esc to stop";
-  return `<div class="canvas${removing ? " full" : ""}">
+  else if (inline && S.tool === "preview") hint = "Your SVG as it will be saved · the grid shows transparency";
+  return `<div class="canvas${full ? " full" : ""}">
       <img src="${rasterURL}" alt="Original image" style="image-rendering:auto">
       ${tools}
       ${inline ? `<div class="after vec${removing ? " removing" : ""}" role="img" aria-label="Traced vector">${current()}</div>
@@ -514,7 +529,7 @@ function boundsOverlay() {
   // The SVG's edge as a dashed frame: the trimmed box (it follows removals)
   // or, untrimmed, the whole canvas with the empty space hatched.
   if (S.bg === "keep") return "";
-  const [x0, y0, x1, y1] = trimBox(S.removed);
+  const [x0, y0, x1, y1] = S.trim ? currentTrim() : trimBox(S.removed);
   const trimmed = S.trim;
   return `<svg class="bounds" viewBox="0 0 260 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
     <defs><pattern id="h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="6" fill="rgba(201,138,18,.45)"/></pattern></defs>
@@ -705,8 +720,12 @@ const screens = {
     const kept = S.bg === "keep";
     const trimmed = S.trim && !kept;
     const n = S.type === "bw" ? 2 : S.colours + (kept ? 1 : 0);  // extra-shade rows still add colours to the file
-    const tb = trimBox(S.removed);
-    const size = trimmed ? `${Math.ceil(tb[2] - tb[0])} × ${Math.ceil(tb[3] - tb[1])}` : "260 × 200";
+    if (trimmed && !S.trimBox) S.trimBox = trimBox(S.removed);
+    const tb = trimmed ? S.trimBox : [0, 0, 260, 200];
+    const size = `${Math.ceil(tb[2] - tb[0])} × ${Math.ceil(tb[3] - tb[1])}`;
+    const now = trimBox(S.removed);
+    const stale = trimmed && !sameBox(tb, now);
+    const fresh = `${Math.ceil(now[2] - now[0])} × ${Math.ceil(now[3] - now[1])}`;
     const svg = current();
     const shapes = (svg.match(/data-s="(?!bg)/g) || []).length;
     const kb = (new Blob([svg]).size / 1024).toFixed(1);
@@ -724,9 +743,16 @@ const screens = {
       </div>
       <div class="eyebrow">Clean up</div>
       ${strays ? `<div class="why">${icon.spark}<span>Found <b>${strays} tiny stray shape${strays > 1 ? "s" : ""}</b> (specks from the PNG, near the corners). <button class="link" data-act="removeStrays">Remove ${strays > 1 ? "them" : "it"}</button></span></div>` : ""}
-      ${kept ? `<div class="why">${icon.spark}<span>The <b>white background</b> can go: click it with Remove, or <button class="link" data-act="removeBg">remove it now</button>.</span></div>` : ""}
-      <button class="toggle${trimmed ? " on" : ""}" data-toggle="trim" ${kept ? "disabled" : ""}><span class="t"><strong>Trim the empty space</strong><span>${kept ? "Remove the background first" : trimmed ? `Trimmed to ${size} px. Re-trims by itself as you remove shapes.` : "Fit the SVG to the drawing (dashed frame)"}</span></span><span class="sw"></span></button>
-      <button class="toggle${S.tool === "remove" ? " on" : ""}" data-tool="${S.tool === "remove" ? "compare" : "remove"}"><span class="t"><strong>Remove</strong><span>Click anything on the picture that shouldn't be there, including the background. Shift-click removes every shape of that colour.</span></span><span class="sw"></span></button>
+      ${kept ? `<div class="why">${icon.spark}<span>The <b>white background</b> can go: click it with <b>Remove</b> on the toolbar, or <button class="link" data-act="removeBg">remove it now</button>.</span></div>` : ""}
+      <div class="trimrow${stale ? " stale" : ""}">
+        <span class="t"><strong>${kept ? "Trim the empty space" : stale ? "The drawing changed since you trimmed" : trimmed ? `Trimmed to ${size} px` : "Not trimmed"}</strong>
+          <span>${kept ? "Remove the background first; it fills the whole canvas." : stale ? `Trim again to fit what's left (${fresh} px).` : trimmed ? "The dashed frame is the SVG's edge." : `Trim fits the SVG to the drawing (${fresh} px).`}</span></span>
+        <span class="acts">
+          ${trimmed && !stale ? `<button class="btn ghost" data-act="untrim">Undo trim</button>` : ""}
+          <button class="btn${stale || !trimmed ? " primary" : ""}" data-act="doTrim" ${kept || (trimmed && !stale) ? "disabled" : ""}>${stale ? "Trim again" : "Trim"}</button>
+        </span>
+      </div>
+      <div class="tip">${icon.bulb}<span>To remove anything else, choose <b>Remove</b> on the picture's toolbar and click it, background included. Shift-click removes every shape of that colour.</span></div>
       ${removedN ? `<div class="tally">${S.removedStack.flat().length} removed <button class="btn" data-act="undoRemove">Undo</button><button class="btn" data-act="clearRemove">Clear</button></div>` : ""}
       <div class="eyebrow">Your choices</div>
       <div class="did">
@@ -837,7 +863,14 @@ document.addEventListener("click", (e) => {
   if (menuBtn) { menuBtn.parentElement.classList.toggle("open"); return; }
 
   const go_ = e.target.closest("[data-go]");
-  if (go_) { const s = go_.dataset.go; if (s === "wizard") S.step = 1; go(s); return; }
+  if (go_) {
+    const s = go_.dataset.go;
+    if (s === "wizard") S.step = 1;
+    // Same defaults as choosing Fully automatic from "How would you like to trace it?"
+    if (s === "auto") Object.assign(S, RECOMMENDED, { autoUndo: {}, removed: new Set(SPECKS), removedStack: [], trimBox: null });
+    go(s);
+    return;
+  }
 
   const tool = e.target.closest("[data-tool]");
   if (tool) { S.tool = tool.dataset.tool; render(); return; }
@@ -865,7 +898,7 @@ document.addEventListener("click", (e) => {
   if (tog && !tog.disabled) {
     const k = tog.dataset.toggle;
     if (k === "bgRemove") S.bg = S.bg === "remove" ? "keep" : "remove";
-    else { S[k] = !S[k]; if (k === "trim") S.trimTouched = true; }
+    else { S[k] = !S[k]; if (k === "trim") { S.trimTouched = true; S.trimBox = null; } }
     render(); return;
   }
   const undo = e.target.closest("[data-undo]");
@@ -911,7 +944,14 @@ document.addEventListener("click", (e) => {
       S.step = Math.min(5, S.step + 1);
       if (S.step === 5) { S.from = "wizard"; go("review"); } else render();
     },
-    review: () => { S.from = S.screen; S.tool = "compare"; go("review"); },
+    review: () => { S.from = S.screen; S.tool = "compare"; S.trimBox = null; go("review"); },
+    doTrim: () => {
+      S.trim = true;
+      S.trimBox = trimBox(S.removed);
+      toast(`Trimmed to ${Math.ceil(S.trimBox[2] - S.trimBox[0])} × ${Math.ceil(S.trimBox[3] - S.trimBox[1])} px`);
+      render();
+    },
+    untrim: () => { S.trim = false; S.trimBox = null; render(); },
     cleanBg: () => { S.bg = S.bg === "keep" ? "remove" : "keep"; if (S.bg !== "keep") S.trim = true; render(); },
     resetColours: () => { S.recolor = {}; render(); },
     removeStrays: () => { removeShapes(SPECKS.filter((id) => !S.removed.has(id))); },
@@ -1039,7 +1079,8 @@ $("#modal").addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#modal").hidden) { closeDialog(); return; }
   if (S.screen !== "review" || e.target.matches?.("input, textarea")) return;
-  if (e.key === "Escape" && S.tool === "remove") { S.tool = "compare"; render(); }
+  if (e.key === "Escape" && S.tool !== "compare") { S.tool = "compare"; render(); }
+  else if (e.key.toLowerCase() === "p") { S.tool = S.tool === "preview" ? "compare" : "preview"; render(); }
   else if (e.key.toLowerCase() === "r") { S.tool = S.tool === "remove" ? "compare" : "remove"; render(); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && S.removedStack.length) { e.preventDefault(); $("[data-act=undoRemove]")?.click(); }
 });
