@@ -27,9 +27,8 @@ if (git tag --list $tag) {
 
 function Set-Version([string]$path, [string]$pattern, [string]$replacement) {
     $text = [IO.File]::ReadAllText($path)
-    $new = [regex]::Replace($text, $pattern, $replacement, 'Multiline')
-    if ($new -eq $text) { throw "Couldn't find the version in $path" }
-    [IO.File]::WriteAllText($path, $new)
+    if (-not [regex]::IsMatch($text, $pattern, 'Multiline')) { throw "Couldn't find the version in $path" }
+    [IO.File]::WriteAllText($path, [regex]::Replace($text, $pattern, $replacement, 'Multiline'))
 }
 
 $desktop = "$root\app\desktop"
@@ -41,7 +40,9 @@ Set-Version "$desktop\src-tauri\Cargo.toml" '^(version = )"[^"]*"' "`$1`"$Versio
 cargo update --manifest-path "$desktop\src-tauri\Cargo.toml" -p btrace-desktop --offline 2>&1 | Out-Null
 
 git add "$desktop\src-tauri\tauri.conf.json" "$desktop\package.json" "$desktop\src-tauri\Cargo.toml" "$desktop\src-tauri\Cargo.lock"
-git commit -q -m "Release $tag"
+# Already at this version (e.g. the first release): tag the current commit.
+git diff --cached --quiet
+if ($LASTEXITCODE -ne 0) { git commit -q -m "Release $tag" }
 git tag $tag
 
 $branch = git rev-parse --abbrev-ref HEAD
