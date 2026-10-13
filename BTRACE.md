@@ -117,14 +117,18 @@ http://127.0.0.1:8765 and opens it.
 - `bench.py`: traces images with several configs, scores each render against
   the source and writes a contact sheet to `lab/out/` (git-ignored). Needs
   `pip install pillow numpy opencv-python-headless` and `cargo install resvg`.
-- `samples/`: test images.
-- `results/`: kept outputs worth comparing against later.
+- `sweep.py`: sweeps one option over several values and builds a zoomed
+  comparison.
+- `samples/` and `results/`: test images and kept outputs. **Local only and
+  git-ignored**: the test set includes third-party logos and artwork that
+  must not be published. Drop your own images in `lab/samples/` to test.
 - `experiments/`: Python prototypes that ideas were tested in before being
   ported to Rust.
 
 ## Roadmap
 
-- Straight-line and sharp-corner detection.
+- Gradients and glows: trace soft edges as real gradients instead of hard
+  cuts.
 - A broader sample set (line art, game UI, gradients) so tuning isn't
   logo-only.
-- Btrace's own app: side-by-side compare, sliders and live preview.
+- A desktop build with an installer and automatic updates.

@@ -13,3 +13,7 @@ lab/out/
 # Btrace app build output
 app/wasm/target/
 app/web/pkg/
+
+# Test images: may include third-party logos/artwork; never publish
+lab/samples/
+lab/results/
