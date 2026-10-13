@@ -112,6 +112,7 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 }
 .canvas img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .canvas .after { clip-path: inset(0 0 0 50%); }
+.canvas.paired > img.orig { clip-path: inset(0 50% 0 0); }
 .canvas .split { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--accent); }
 .canvas .split::after { content: "‹ ›"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
 .canvas .tag { position: absolute; top: 10px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-2); }
@@ -434,7 +435,7 @@ function badge({ bg = true, colours = 4, trim = false, mono = false, shade = fal
   // light sun, mountain and base bar become paper.
   if (mono) navy = cream = "#111", teal = orange = "#fff";
   const barFill = mono ? "#fff" : cream;
-  const grad = shade ? `<defs><radialGradient id="g" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#34477c"/><stop offset="1" stop-color="${C.navy}"/></radialGradient></defs>` : "";
+  const grad = shade ? `<defs><radialGradient id="g" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="${lighten(navy, 0.18)}"/><stop offset="1" stop-color="${navy}"/></radialGradient></defs>` : "";
   const ring = shade ? "url(#g)" : navy;
   // Every shape is tagged (data-s) so the Review tools can remove it. The two
   // specks stand in for the stray bits a compressed PNG leaves behind.
@@ -477,6 +478,12 @@ function trimBox(removed = new Set()) {
     const g = GEO[id];
     return [Math.min(b[0], g[0]), Math.min(b[1], g[1]), Math.max(b[2], g[2]), Math.max(b[3], g[3])];
   }, [Infinity, Infinity, -Infinity, -Infinity]);
+}
+/// `hex` mixed towards white by `t` (0-1).
+function lighten(hex, t) {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (v) => Math.round(v + (255 - v) * t).toString(16).padStart(2, "0");
+  return `#${mix(n >> 16)}${mix((n >> 8) & 255)}${mix(n & 255)}`;
 }
 const uri = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 
@@ -586,8 +593,9 @@ function picture({ split = true, hint = "", analysing = false, inline = false } 
     </div>` : "";
   if (removing) hint = "Click anything to remove it, background too · Shift-click: every shape that colour · Esc to stop";
   else if (inline && S.tool === "preview") hint = "Your SVG as it will be saved · the grid shows transparency";
-  return `<div class="canvas${full ? " full" : ""}">
-      <img src="${rasterURL}" alt="Original image" style="image-rendering:auto">
+  const paired = (split || inline) && !full;
+  return `<div class="canvas${full ? " full" : ""}${paired ? " paired" : ""}">
+      <img class="orig" src="${rasterURL}" alt="Original image" style="image-rendering:auto">
       ${tools}
       ${inline ? `<div class="after vec${removing ? " removing" : ""}" role="img" aria-label="Traced vector">${current()}</div>
       <div class="split" aria-hidden="true"></div>
