@@ -71,6 +71,12 @@ pub struct SnapFrontend {
     pub max_colors: usize,
     /// Speckle area in *source* pixels; scaled with the image internally.
     pub min_area: usize,
+    /// Smoothing (Gaussian sigma, source pixels) applied to *soft* edges only
+    /// before snapping. A soft, grainy ramp such as a glow otherwise snaps to
+    /// a ragged edge that follows the grain. Crisp edges are detected by
+    /// their width and left alone, so sharp corners keep their points.
+    /// 0 = off.
+    pub smooth: f64,
 }
 
 impl Default for SnapFrontend {
@@ -80,6 +86,7 @@ impl Default for SnapFrontend {
             palette: Vec::new(),
             max_colors: 0,
             min_area: 16,
+            smooth: 1.2,
         }
     }
 }
@@ -114,7 +121,7 @@ impl SnapFrontend {
             return Err(Error::EmptyImage);
         }
         let scale = self.scale_for(img.width, img.height);
-        Ok((upscale_snap(img, scale as usize, &palette), scale, palette))
+        Ok((upscale_snap(img, scale as usize, &palette, self.smooth), scale, palette))
     }
 
     /// Cluster a snapped image and pin every paint to its exact palette color
@@ -300,14 +307,161 @@ fn axis_taps(src_len: usize, scale: usize) -> Vec<([usize; 4], [f32; 4])> {
         .collect()
 }
 
+/// Separable Gaussian blur in place (clamped edges). `sigma` in pixels.
+fn gaussian_blur(px: &mut [[f32; 4]], w: usize, h: usize, sigma: f64) {
+    if sigma <= 0.0 {
+        return;
+    }
+    let r = (sigma * 3.0).ceil() as i64;
+    let mut kernel: Vec<f32> = (-r..=r)
+        .map(|i| (-(i * i) as f64 / (2.0 * sigma * sigma)).exp() as f32)
+        .collect();
+    let sum: f32 = kernel.iter().sum();
+    kernel.iter_mut().for_each(|k| *k /= sum);
+
+    let mut tmp = vec![[0f32; 4]; w * h];
+    let pass = |src: &[[f32; 4]], dst: &mut [[f32; 4]], horizontal: bool| {
+        for y in 0..h as i64 {
+            for x in 0..w as i64 {
+                let mut acc = [0f32; 4];
+                for (k, wt) in kernel.iter().enumerate() {
+                    let d = k as i64 - r;
+                    let (sx, sy) = if horizontal {
+                        ((x + d).clamp(0, w as i64 - 1), y)
+                    } else {
+                        (x, (y + d).clamp(0, h as i64 - 1))
+                    };
+                    let p = src[sy as usize * w + sx as usize];
+                    for c in 0..4 {
+                        acc[c] += p[c] * wt;
+                    }
+                }
+                dst[y as usize * w + x as usize] = acc;
+            }
+        }
+    };
+    pass(px, &mut tmp, true);
+    pass(&tmp, px, false);
+}
+
+/// Edges whose ramp is at most this wide (px) are crisp: left alone.
+const CRISP_WIDTH: f32 = 3.0;
+/// Edges at least this wide are fully soft: smoothed at full strength.
+const SOFT_WIDTH: f32 = 4.5;
+/// Window radius (px) for an edge's contrast, and how far a soft decision
+/// spreads from the edge's steepest point across its ramp.
+const SOFT_RADIUS: usize = 4;
+/// Minimum luma contrast (0-255) across the window for an edge to count.
+const EDGE_CONTRAST: f32 = 40.0;
+
+/// Separable running max (or min) over a `(2r+1)^2` window, clamped edges.
+fn extremum_filter(v: &[f32], w: usize, h: usize, r: usize, max: bool) -> Vec<f32> {
+    let pick = |a: f32, b: f32| if max { a.max(b) } else { a.min(b) };
+    let mut tmp = vec![0f32; w * h];
+    let mut out = vec![0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let (x0, x1) = (x.saturating_sub(r), (x + r).min(w - 1));
+            tmp[y * w + x] = (x0..=x1).map(|i| v[y * w + i]).reduce(pick).unwrap();
+        }
+    }
+    for y in 0..h {
+        let (y0, y1) = (y.saturating_sub(r), (y + r).min(h - 1));
+        for x in 0..w {
+            out[y * w + x] = (y0..=y1).map(|j| tmp[j * w + x]).reduce(pick).unwrap();
+        }
+    }
+    out
+}
+
+/// Per-pixel softness in [0, 1]: 0 on and around crisp (anti-aliased) edges
+/// and in flat areas, rising to 1 across wide, soft ramps such as glows.
+///
+/// An edge's width is its local contrast (luma range over a window) divided
+/// by its slope. That ratio only means something at the edge's steepest
+/// point (a pixel beside a crisp edge sees the contrast in its window but no
+/// slope of its own), so it is measured at gradient peaks, mapped to
+/// softness, then spread across the ramp. Measured on small logos, crisp
+/// edges come out 2.0-2.5 px wide and a soft moon glow up to ~9.
+fn softness(px: &[[f32; 4]], w: usize, h: usize) -> Vec<f32> {
+    let luma: Vec<f32> = px
+        .iter()
+        .map(|p| 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2])
+        .collect();
+    let at = |x: i64, y: i64| {
+        luma[y.clamp(0, h as i64 - 1) as usize * w + x.clamp(0, w as i64 - 1) as usize]
+    };
+    let mut grad = vec![0f32; w * h];
+    for y in 0..h as i64 {
+        for x in 0..w as i64 {
+            // Sobel, normalised to luma per pixel.
+            let gx = (at(x + 1, y - 1) + 2.0 * at(x + 1, y) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x - 1, y)
+                - at(x - 1, y + 1))
+                / 8.0;
+            let gy = (at(x - 1, y + 1) + 2.0 * at(x, y + 1) + at(x + 1, y + 1)
+                - at(x - 1, y - 1)
+                - 2.0 * at(x, y - 1)
+                - at(x + 1, y - 1))
+                / 8.0;
+            grad[y as usize * w + x as usize] = (gx * gx + gy * gy).sqrt();
+        }
+    }
+    let hi = extremum_filter(&luma, w, h, SOFT_RADIUS, true);
+    let lo = extremum_filter(&luma, w, h, SOFT_RADIUS, false);
+    let grad_max = extremum_filter(&grad, w, h, 1, true);
+
+    let mut soft = vec![0f32; w * h];
+    for i in 0..w * h {
+        let contrast = hi[i] - lo[i];
+        let g = grad[i];
+        // A real edge peak: locally steepest, with contrast and a real slope.
+        if g >= grad_max[i] && contrast > EDGE_CONTRAST && g > contrast / 20.0 {
+            let width = contrast / g;
+            let t = ((width - CRISP_WIDTH) / (SOFT_WIDTH - CRISP_WIDTH)).clamp(0.0, 1.0);
+            soft[i] = t * t * (3.0 - 2.0 * t);
+        }
+    }
+    let mut spread: Vec<[f32; 4]> = extremum_filter(&soft, w, h, SOFT_RADIUS, true)
+        .into_iter()
+        .map(|s| [s, 0.0, 0.0, 0.0])
+        .collect();
+    // Feather so the blend has no visible seam where softness starts.
+    gaussian_blur(&mut spread, w, h, 1.0);
+    spread.into_iter().map(|s| s[0].clamp(0.0, 1.0)).collect()
+}
+
+/// Smooth only the soft parts of `px`: blend towards a Gaussian blur by each
+/// pixel's [`softness`]. Crisp edges and their corners are left untouched.
+fn smooth_soft_edges(px: &mut [[f32; 4]], w: usize, h: usize, sigma: f64) {
+    if sigma <= 0.0 {
+        return;
+    }
+    let soft = softness(px, w, h);
+    if soft.iter().all(|&s| s == 0.0) {
+        return;
+    }
+    let mut blurred = px.to_vec();
+    gaussian_blur(&mut blurred, w, h, sigma);
+    for i in 0..w * h {
+        let s = soft[i];
+        for c in 0..4 {
+            px[i][c] += s * (blurred[i][c] - px[i][c]);
+        }
+    }
+}
+
 /// Upscale `img` by `scale` with premultiplied Catmull–Rom, then snap every
-/// pixel to its nearest palette color (or full transparency).
-fn upscale_snap(img: &ColorImage, scale: usize, palette: &[Color]) -> ColorImage {
+/// pixel to its nearest palette color (or full transparency). Soft edges are
+/// first smoothed with Gaussian sigma `smooth` (source pixels); see
+/// [`SnapFrontend::smooth`].
+fn upscale_snap(img: &ColorImage, scale: usize, palette: &[Color], smooth: f64) -> ColorImage {
     let (w, h) = (img.width, img.height);
     let (ow, oh) = (w * scale, h * scale);
 
     // Premultiplied float source.
-    let src: Vec<[f32; 4]> = img
+    let mut src: Vec<[f32; 4]> = img
         .pixels
         .chunks_exact(4)
         .map(|p| {
@@ -315,6 +469,7 @@ fn upscale_snap(img: &ColorImage, scale: usize, palette: &[Color]) -> ColorImage
             [p[0] as f32 * a, p[1] as f32 * a, p[2] as f32 * a, a]
         })
         .collect();
+    smooth_soft_edges(&mut src, w, h, smooth);
 
     // Horizontal pass: w*scale × h.
     let xt = axis_taps(w, scale);
@@ -497,6 +652,30 @@ mod tests {
         let overlap = Color::new(253, 85, 2);
         let palette = detect_palette(&blocks(40, 40, red, overlap), 0);
         assert_eq!(palette.len(), 2, "got {palette:?}");
+    }
+
+    /// A vertical dark-to-light edge whose ramp is `width` px wide, as
+    /// premultiplied float pixels.
+    fn ramp(w: usize, h: usize, width: f32) -> Vec<[f32; 4]> {
+        let mut px = Vec::with_capacity(w * h);
+        for _ in 0..h {
+            for x in 0..w {
+                let t = ((x as f32 - w as f32 / 2.0) / width + 0.5).clamp(0.0, 1.0);
+                let v = 20.0 + t * 220.0;
+                px.push([v, v, v, 1.0]);
+            }
+        }
+        px
+    }
+
+    #[test]
+    fn crisp_edges_are_not_soft_but_glows_are() {
+        let (w, h) = (40, 12);
+        let mid = |s: &[f32]| s[6 * w + w / 2];
+        let crisp = softness(&ramp(w, h, 1.0), w, h);
+        let glow = softness(&ramp(w, h, 8.0), w, h);
+        assert!(mid(&crisp) < 0.05, "crisp edge softness {}", mid(&crisp));
+        assert!(mid(&glow) > 0.9, "glow softness {}", mid(&glow));
     }
 
     #[test]

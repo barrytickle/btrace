@@ -128,6 +128,11 @@ struct Args {
     /// Snap clustering: upscale factor before snapping (0 = auto, up to 8).
     #[arg(long, value_parser = clap::value_parser!(u32).range(0..=16))]
     snap_scale: Option<u32>,
+
+    /// Snap clustering: smoothing of soft edges (glows) before snapping, in
+    /// source px (default 1.2, 0 = off). Crisp edges and corners are untouched.
+    #[arg(long)]
+    snap_smooth: Option<f64>,
 }
 
 fn parse_simplify_tolerance(s: &str) -> Result<f64, String> {
@@ -235,6 +240,9 @@ fn build_config(args: &Args) -> Result<Config, String> {
     }
     if let Some(v) = args.snap_scale {
         config.snap_scale = v;
+    }
+    if let Some(v) = args.snap_smooth {
+        config.snap_smooth = v;
     }
 
     // Palette: inline flag wins over file; both parse to a color list.

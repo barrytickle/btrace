@@ -91,6 +91,7 @@ pub struct SegmentKey {
     snap_scale: u32,
     snap_palette: Vec<[u8; 3]>,
     snap_max_colors: usize,
+    snap_smooth: f64,
 }
 
 /// High-level converter configuration. [`Config::build`] turns this into a
@@ -149,6 +150,10 @@ pub struct Config {
     /// aiming for a ~4 MP working image). Curve parameters such as `simplify`
     /// apply in working pixels.
     pub snap_scale: u32,
+    /// Snap clustering: smoothing (Gaussian sigma, source px) applied to soft
+    /// edges only, such as glows, so they snap to a clean edge instead of a
+    /// grainy one. Crisp edges and corners are untouched. 0 = off.
+    pub snap_smooth: f64,
 }
 
 impl Default for Config {
@@ -175,6 +180,7 @@ impl Default for Config {
             binary_adaptive_t: 15.0,
             watershed_detail: 128,
             snap_scale: 0,
+            snap_smooth: 1.2,
         }
     }
 }
@@ -242,6 +248,7 @@ impl Config {
                 palette: self.palette.clone(),
                 max_colors: self.max_colors.unwrap_or(0),
                 min_area: self.speckle_area(),
+                smooth: self.snap_smooth,
             }),
         }
     }
@@ -350,6 +357,7 @@ impl Config {
             snap_scale: self.snap(self.snap_scale),
             snap_palette: self.snap(self.palette.iter().map(Color::rgb_u8).collect()),
             snap_max_colors: self.snap(self.max_colors.unwrap_or(0)),
+            snap_smooth: self.snap(self.snap_smooth),
         }
     }
 
