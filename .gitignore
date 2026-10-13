@@ -6,3 +6,6 @@ Cargo.lock
 *.sublime*
 .vscode
 .DS_Store
+
+# Btrace lab output
+lab/out/
