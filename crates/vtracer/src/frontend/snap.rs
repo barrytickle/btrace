@@ -10,7 +10,8 @@
 //!    eight neighbours) vote. Anti-aliased edge pixels are blends of the two
 //!    colors they separate; left in, they become a palette entry of their own
 //!    and the trace grows a halo outline around every shape. Flat pixels are
-//!    binned in OKLab and greedily merged, most common first, into clusters
+//!    binned in OKLab (with toe-corrected lightness, so near-blacks are not
+//!    split apart) and greedily merged, most common first, into clusters
 //!    of perceptually indistinguishable color. Tiny clusters are dropped.
 //! 2. **Smooth upscale.** The image is enlarged `scale`× with Catmull–Rom
 //!    bicubic interpolation (premultiplied alpha, so transparent pixels do
@@ -42,8 +43,10 @@ use super::{ColorClusterFrontend, Frontend};
 
 /// A pixel is flat when its OKLab distance to every 8-neighbour is below this.
 const FLAT_THRESHOLD: f64 = 0.05;
-/// Clusters closer than this in OKLab are merged into one palette entry.
-const MERGE_THRESHOLD: f64 = 0.10;
+/// Clusters closer than this in OKLab (toe-corrected lightness) are merged
+/// into one palette entry. Mastercard's red and its red-orange overlap are
+/// ~0.10 apart, so the limit sits well below that.
+const MERGE_THRESHOLD: f64 = 0.06;
 /// Flat pixels are pre-binned on an OKLab grid of this cell size.
 const BIN_SIZE: f64 = 0.02;
 /// A cluster needs at least this share of the flat pixels to become a color.
@@ -164,7 +167,7 @@ fn has_transparency(img: &ColorImage) -> bool {
 pub fn detect_palette(img: &ColorImage, max_colors: usize) -> Vec<Color> {
     let (w, h) = (img.width, img.height);
     let px = |x: usize, y: usize| img.get_pixel(x, y);
-    let lab: Vec<Oklab> = (0..w * h).map(|i| Oklab::from_color(&px(i % w, i / w))).collect();
+    let lab: Vec<Oklab> = (0..w * h).map(|i| Oklab::from_color_toe(&px(i % w, i / w))).collect();
 
     // Bin flat, opaque pixels: (sum of RGB, count) per OKLab grid cell, plus
     // the cell's OKLab sum for the merge distance.
@@ -465,6 +468,35 @@ mod tests {
         assert_eq!(snap_mix(mix(0.45), &palette), 0);
         assert_eq!(snap_mix(mix(0.55), &palette), 1);
         assert_eq!(snap_mix(orange, &palette), 2);
+    }
+
+    /// Checkerboard of two colors in 4×4 blocks, so every block interior is
+    /// flat but the two shades are both well represented.
+    fn blocks(w: usize, h: usize, a: Color, b: Color) -> ColorImage {
+        let mut img = ColorImage::new_w_h(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                img.set_pixel(x, y, if (x / 4 + y / 4) % 2 == 0 { &a } else { &b });
+            }
+        }
+        img
+    }
+
+    #[test]
+    fn near_blacks_merge_into_one_color() {
+        // Plain OKLab puts these 0.124 apart (Apple Pay's background split
+        // into two blacks and left specks); toe-corrected lightness does not.
+        let palette = detect_palette(&blocks(40, 40, Color::new(0, 0, 0), Color::new(7, 6, 6)), 0);
+        assert_eq!(palette.len(), 1, "got {palette:?}");
+    }
+
+    #[test]
+    fn close_but_distinct_hues_stay_apart() {
+        // Mastercard's red and the red-orange where its circles overlap.
+        let red = Color::new(240, 2, 33);
+        let overlap = Color::new(253, 85, 2);
+        let palette = detect_palette(&blocks(40, 40, red, overlap), 0);
+        assert_eq!(palette.len(), 2, "got {palette:?}");
     }
 
     #[test]

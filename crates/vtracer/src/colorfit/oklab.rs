@@ -43,6 +43,23 @@ impl Oklab {
         }
     }
 
+    /// OKLab with Ottosson's "toe" applied to lightness (his `Lr`, from the
+    /// Okhsl/Okhsv write-up). Plain OKLab stretches the darkest shades far
+    /// apart — pure black and (7, 6, 6) are as distant as two clearly
+    /// different mid-tone colors — while `Lr` tracks perceived lightness
+    /// near black and is nearly unchanged elsewhere.
+    pub fn from_color_toe(color: &Color) -> Self {
+        const K1: f64 = 0.206;
+        const K2: f64 = 0.03;
+        const K3: f64 = (1.0 + K1) / (1.0 + K2);
+        let lab = Self::from_color(color);
+        let x = K3 * lab.l - K1;
+        Oklab {
+            l: (x + (x * x + 4.0 * K2 * K3 * lab.l).sqrt()) / 2.0,
+            ..lab
+        }
+    }
+
     /// Squared Euclidean distance (monotonic with distance; avoids the sqrt).
     pub fn distance_squared(&self, other: &Oklab) -> f64 {
         let dl = self.l - other.l;
