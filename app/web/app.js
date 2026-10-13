@@ -114,10 +114,11 @@ function svgURL(svg) {
   return URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
 }
 
-/// The same SVG drawn as hairline outlines, for the Outlines overlay.
+/// The same SVG drawn as dashed guide lines, for the Outlines overlay. Styled
+/// like an editor guide (dashed, app accent) so it never reads as artwork.
 function outlineSVG(svg) {
   const style =
-    "<style>path{fill:none!important;stroke:#ff3d8b;stroke-width:1;" +
+    "<style>path{fill:none!important;stroke:#3ccfb0;stroke-width:1.25;stroke-dasharray:4 3;" +
     "vector-effect:non-scaling-stroke;stroke-linejoin:round}</style>";
   return svg.replace(/<svg[^>]*>/, (m) => m + style);
 }
@@ -153,13 +154,15 @@ function showResult(result, cropped, ms) {
   );
   ui.download.disabled = false;
   setStatus(`Traced in ${Math.round(ms)} ms`);
+  showGuidedResult(result, out, bytes);
 }
 
 function updateOutlines() {
   const existing = ui.traceLayer.querySelector(".outline");
   if (state.outlineURL) URL.revokeObjectURL(state.outlineURL);
   state.outlineURL = null;
-  if (!ui.outlines.checked || !state.result) {
+  $("guideBadge").hidden = !outlinesOn();
+  if (!outlinesOn() || !state.result) {
     existing?.remove();
     return;
   }
@@ -355,6 +358,8 @@ function updateRemovals(render = true) {
     : "Use the Remove tool to click away regions.";
   ui.removedCount.classList.toggle("muted", n === 0);
   ui.undoRemove.disabled = ui.clearRemove.disabled = n === 0;
+  g.removed.textContent = n ? `${n} removed so far.` : "";
+  g.undo.hidden = n === 0;
   if (render) requestRender();
 }
 
@@ -385,7 +390,7 @@ function setTool(tool) {
   if (tool === "remove" && state.view === "original") setView("split");
 }
 
-function setMode(mode) {
+function setMode(mode, render = true) {
   state.mode = mode;
   document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
   document.querySelectorAll("[data-for]").forEach((s) => (s.hidden = s.dataset.for !== mode));
@@ -394,13 +399,22 @@ function setMode(mode) {
     state.removals = [];
     updateRemovals(false);
   }
-  requestRender();
+  syncGuidedStep3();
+  if (render) requestRender();
 }
 
 document.querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => setView(b.dataset.view)));
 document.querySelectorAll("[data-tool]").forEach((b) => (b.onclick = () => setTool(b.dataset.tool)));
 document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
-ui.outlines.onchange = updateOutlines;
+function toggleOutlines(on = !outlinesOn()) {
+  ui.outlines.setAttribute("aria-pressed", on);
+  ui.outlines.classList.toggle("on", on);
+  updateOutlines();
+}
+function outlinesOn() {
+  return ui.outlines.getAttribute("aria-pressed") === "true";
+}
+ui.outlines.onclick = () => toggleOutlines();
 ui.download.onclick = download;
 
 // ---- settings -----------------------------------------------------------------
@@ -415,16 +429,26 @@ const sliders = [
   [ui.speckle, ui.speckleOut, (v) => `${v} px`],
   [ui.pad, ui.padOut, (v) => `${v} px`],
 ];
+const shows = new Map();
 for (const [input, out, fmt] of sliders) {
   const show = () => (out.textContent = fmt(input.value));
+  shows.set(input, show);
   input.addEventListener("input", () => {
     show();
     requestRender();
   });
   show();
 }
+
+/// Set a control without triggering a render (the caller renders once).
+function setControl(input, value) {
+  if (input.type === "checkbox") input.checked = value;
+  else input.value = value;
+  shows.get(input)?.();
+}
 for (const box of [ui.lines, ui.removeBg, ui.adaptive]) box.addEventListener("change", requestRender);
 ui.crop.addEventListener("change", () => {
+  g.crop.checked = ui.crop.checked;
   syncCrop();
   requestRender();
 });
@@ -459,6 +483,7 @@ window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (k === "r") setTool("remove");
   else if (k === "h") setTool("pan");
+  else if (k === "o") toggleOutlines();
   else if (k === "v") setView({ split: "trace", trace: "original", original: "split" }[state.view]);
   else if (k === "0") state.loaded && fit();
   else if (k === "+" || k === "=") zoomCentre(1.25);
@@ -471,5 +496,161 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
-setMode("snap");
+// ---- guided flow ----------------------------------------------------------------
+//
+// Three plain questions that set the same controls as the Fine-tune panel,
+// so switching panels never loses anything.
+
+const g = {
+  crop: $("gCrop"), clickHelp: $("gClickHelp"), removed: $("gRemoved"), undo: $("gUndo"),
+  colourTitle: $("gColourTitle"), colours: $("gColours"), found: $("gFound"),
+  swatches: $("gSwatches"), stepper: $("gStepper"), fewer: $("gFewer"), count: $("gCount"), more: $("gMore"),
+  detail: $("gDetail"), bw: $("gBw"), download: $("gDownload"), summary: $("gSummary"),
+};
+
+/// What each image type sets. Detail and ink levels refine these.
+const TYPES = {
+  logo: { mode: "snap", smooth: 1.2, lines: true, simplify: 0.25, speckle: 4 },
+  illustration: { mode: "snap", smooth: 1.2, lines: true, simplify: 0.35, speckle: 4 },
+  detailed: { mode: "color", lines: false, simplify: 0.5 },
+  bw: { mode: "bw", lines: true, simplify: 0.3, speckle: 4, adaptive: false },
+};
+const DETAIL = {
+  low: { precision: 5, gradient: 32, speckle: 10 },
+  normal: { precision: 6, gradient: 16, speckle: 6 },
+  high: { precision: 7, gradient: 8, speckle: 3 },
+};
+const INK = { light: 100, normal: 128, dark: 160 };
+
+const guided = { type: "logo", detail: "normal", ink: "normal", autoColors: 0 };
+
+function pick(selector, attr, value) {
+  document.querySelectorAll(selector).forEach((b) => {
+    const on = b.dataset[attr] === value;
+    b.classList.toggle("on", on);
+    if (b.hasAttribute("aria-checked")) b.setAttribute("aria-checked", on);
+  });
+}
+
+function applyType(type) {
+  guided.type = type;
+  pick("[data-type]", "type", type);
+  const t = TYPES[type];
+  setControl(ui.lines, t.lines);
+  setControl(ui.simplify, t.simplify);
+  if (t.smooth !== undefined) setControl(ui.smooth, t.smooth);
+  if (t.speckle !== undefined) setControl(ui.speckle, t.speckle);
+  if (t.adaptive !== undefined) setControl(ui.adaptive, t.adaptive);
+  setControl(ui.maxColors, 0);
+  if (type === "detailed") applyDetail(guided.detail, false);
+  if (type === "bw") applyInk(guided.ink, false);
+  setMode(t.mode, false);
+  requestRender();
+}
+
+function applyDetail(level, render = true) {
+  guided.detail = level;
+  pick("[data-detail]", "detail", level);
+  const d = DETAIL[level];
+  setControl(ui.precision, d.precision);
+  setControl(ui.gradient, d.gradient);
+  setControl(ui.speckle, d.speckle);
+  if (render) requestRender();
+}
+
+function applyInk(level, render = true) {
+  guided.ink = level;
+  pick("[data-ink]", "ink", level);
+  setControl(ui.threshold, INK[level]);
+  if (render) requestRender();
+}
+
+function applyBackground(choice) {
+  pick("[data-bg]", "bg", choice);
+  setControl(ui.removeBg, choice === "auto");
+  g.clickHelp.hidden = choice !== "click";
+  setTool(choice === "click" ? "remove" : "pan");
+  if (choice !== "click" && state.removals.length) {
+    state.removals = [];
+    updateRemovals(false);
+  }
+  requestRender();
+}
+
+function syncGuidedStep3() {
+  const m = state.mode;
+  g.colours.hidden = m !== "snap";
+  g.detail.hidden = m !== "color";
+  g.bw.hidden = m !== "bw";
+  g.colourTitle.textContent = m === "snap" ? "Colours" : m === "color" ? "Detail" : "Ink";
+}
+
+function setColourCount(n) {
+  setControl(ui.maxColors, n);
+  requestRender();
+}
+
+function showGuidedResult(result, out, bytes) {
+  const n = result.colors.length;
+  const auto = +ui.maxColors.value === 0;
+  if (auto) guided.autoColors = n;
+  if (state.mode === "snap") {
+    g.found.textContent = auto
+      ? `Btrace found ${n} colour${n === 1 ? "" : "s"}. If two of them should be the same colour, use fewer.`
+      : `Using ${n} colour${n === 1 ? "" : "s"}.`;
+    g.swatches.replaceChildren(
+      ...result.colors.slice(0, 24).map((hex) => {
+        const sw = document.createElement("span");
+        sw.style.background = hex;
+        sw.dataset.hex = hex;
+        return sw;
+      }),
+    );
+    g.stepper.hidden = false;
+    g.count.textContent = auto ? "Auto" : `${ui.maxColors.value}`;
+    g.fewer.disabled = n <= 1;
+    g.more.disabled = auto;
+  }
+  g.download.disabled = false;
+  g.summary.textContent =
+    `${result.shapes} shape${result.shapes === 1 ? "" : "s"} · ${n} colour${n === 1 ? "" : "s"} · ${formatBytes(bytes)}` +
+    (state.cropped ? ` · trimmed to ${out.width} × ${out.height}` : "");
+}
+
+document.querySelectorAll("[data-type]").forEach((b) => (b.onclick = () => applyType(b.dataset.type)));
+document.querySelectorAll("[data-bg]").forEach((b) => (b.onclick = () => applyBackground(b.dataset.bg)));
+document.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => applyDetail(b.dataset.detail)));
+document.querySelectorAll("[data-ink]").forEach((b) => (b.onclick = () => applyInk(b.dataset.ink)));
+g.fewer.onclick = () => {
+  const current = +ui.maxColors.value || guided.autoColors;
+  setColourCount(Math.max(1, current - 1));
+};
+g.more.onclick = () => {
+  const next = +ui.maxColors.value + 1;
+  // Back at (or past) what Btrace found on its own: that's Auto.
+  setColourCount(next >= guided.autoColors ? 0 : next);
+};
+g.count.onclick = () => setColourCount(0);
+g.crop.onchange = () => {
+  setControl(ui.crop, g.crop.checked);
+  syncCrop();
+  requestRender();
+};
+g.undo.onclick = () => ui.undoRemove.click();
+g.download.onclick = download;
+
+// Panel switch: Guided / Fine-tune.
+document.querySelectorAll("[data-panel]").forEach((b) => {
+  b.onclick = () => {
+    const which = b.dataset.panel;
+    document.querySelectorAll("[data-panel]").forEach((x) => {
+      x.classList.toggle("on", x === b);
+      x.setAttribute("aria-selected", x === b);
+    });
+    $("guided").hidden = which !== "guided";
+    $("advanced").hidden = which !== "advanced";
+  };
+});
+
+applyType("logo");
 setView("split");

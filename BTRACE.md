@@ -95,14 +95,19 @@ builds the engine if needed (`app\build.ps1`; needs `rustup target add
 wasm32-unknown-unknown` and `cargo install wasm-pack`), serves `app/web` on
 http://127.0.0.1:8765 and opens it.
 
+- **Guided (default):** three plain questions, with a live preview: what kind
+  of image it is (logo, illustration, photo/detailed, black & white), what to
+  do with the background (keep, remove, click parts away, trim), and the
+  colours (or detail / ink level). Each answer sets the Fine-tune controls.
+- **Fine-tune:** every setting, each with a plain-English explanation.
 - **Open:** button, drag and drop, or paste.
 - **View:** split (drag the divider), trace only, original only; scroll to
-  zoom, drag to pan; Outlines shows every path edge.
+  zoom, drag to pan. **Outlines** (toolbar toggle, O) draws every path edge
+  as a dashed guide; it is never part of the SVG.
 - **Remove tool (R):** click a region to remove it, Shift-click to remove its
-  whole colour; Ctrl+Z undoes. Plus automatic background removal and crop.
-- **Modes:** Flat art (snap), Detailed (colour clustering), B&W.
-- **Keys:** V cycles views, H pan, 0 fit, +/- zoom, Ctrl+S download, Space-drag
-  pans in any tool.
+  whole colour; Ctrl+Z undoes.
+- **Keys:** V cycles views, H pan, O outlines, 0 fit, +/- zoom, Ctrl+S
+  download, Space-drag pans in any tool.
 
 ## Lab
 

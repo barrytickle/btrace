@@ -38,9 +38,9 @@
           <button id="zoomLabel" class="zoom-label" title="Fit to window (0)">100%</button>
           <button id="zoomIn" title="Zoom in (+)">+</button>
         </div>
-        <label class="check" title="Show the trace's outlines over it">
-          <input type="checkbox" id="outlines"> Outlines
-        </label>
+        <div class="seg">
+          <button id="outlines" aria-pressed="false" title="Show every shape's edge as a dashed guide, to inspect the trace. Never part of the SVG (O)">Outlines</button>
+        </div>
       </div>
 
       <div class="viewport" id="viewport">
@@ -57,78 +57,177 @@
           </div>
         </div>
         <div class="hint" id="hint" hidden></div>
+        <div class="badge" id="guideBadge" hidden>Outlines shown · not part of the SVG</div>
       </div>
     </section>
 
     <aside class="panel" aria-label="Settings">
-      <section>
-        <h2>Mode</h2>
-        <div class="seg wide" role="group" aria-label="Mode">
-          <button data-mode="snap" class="on" title="Clean flat colours. Best for logos, icons and illustrations">Flat art</button>
-          <button data-mode="color" title="Keeps gradients and fine detail. For detailed art and photos">Detailed</button>
-          <button data-mode="bw" title="Black and white line art and scans">B&amp;W</button>
-        </div>
-      </section>
+      <div class="panel-switch seg wide" role="tablist" aria-label="Settings style">
+        <button role="tab" data-panel="guided" class="on" aria-selected="true">Guided</button>
+        <button role="tab" data-panel="advanced" aria-selected="false">Fine-tune</button>
+      </div>
 
-      <section data-for="snap">
-        <h2>Colours</h2>
-        <label class="row">
-          <span>Palette size</span>
-          <output id="maxColorsOut">Auto</output>
-        </label>
-        <input type="range" id="maxColors" min="0" max="16" step="1" value="0" aria-label="Palette size">
-        <div class="swatches" id="swatches" aria-label="Colours in the trace"></div>
-        <label class="row">
-          <span title="Smooths soft, grainy edges such as glows. Crisp edges are left alone">Soft-edge smoothing</span>
-          <output id="smoothOut">1.2</output>
-        </label>
-        <input type="range" id="smooth" min="0" max="3" step="0.1" value="1.2" aria-label="Soft-edge smoothing">
-      </section>
-
-      <section data-for="color">
-        <h2>Colours</h2>
-        <label class="row"><span>Colour precision</span><output id="precisionOut">6</output></label>
-        <input type="range" id="precision" min="1" max="8" step="1" value="6" aria-label="Colour precision">
-        <label class="row"><span title="Colour difference between gradient layers">Gradient step</span><output id="gradientOut">16</output></label>
-        <input type="range" id="gradient" min="1" max="64" step="1" value="16" aria-label="Gradient step">
-      </section>
-
-      <section data-for="bw">
-        <h2>Threshold</h2>
-        <label class="row"><span>Threshold</span><output id="thresholdOut">128</output></label>
-        <input type="range" id="threshold" min="1" max="254" step="1" value="128" aria-label="Threshold">
-        <label class="check"><input type="checkbox" id="adaptive"> Adaptive (uneven lighting)</label>
-      </section>
-
-      <section>
-        <h2>Shapes</h2>
-        <label class="row"><span title="Fewer curve points; higher = smoother, smaller file">Simplify</span><output id="simplifyOut">0.25 px</output></label>
-        <input type="range" id="simplify" min="0" max="1.5" step="0.05" value="0.25" aria-label="Simplify">
-        <label class="row"><span title="Drops patches smaller than this">Speckle filter</span><output id="speckleOut">4 px</output></label>
-        <input type="range" id="speckle" min="0" max="32" step="1" value="4" aria-label="Speckle filter">
-        <label class="check" title="Straight edges become exact lines, with sharp corners where they meet">
-          <input type="checkbox" id="lines" checked> Straight lines &amp; sharp corners
-        </label>
-      </section>
-
-      <section>
-        <h2>Background &amp; crop</h2>
-        <label class="check" title="Removes the colour around the image border">
-          <input type="checkbox" id="removeBg"> Remove background
-        </label>
-        <div class="removed">
-          <span id="removedCount" class="muted">Use the Remove tool to click away regions.</span>
-          <div class="btns">
-            <button id="undoRemove" class="btn small" disabled title="Undo last removal (Ctrl+Z)">Undo</button>
-            <button id="clearRemove" class="btn small" disabled>Clear</button>
+      <!-- ===== Guided: three questions, live preview ===== -->
+      <div id="guided">
+        <section class="step" data-step="1">
+          <h3><span class="num">1</span> What kind of image is this?</h3>
+          <div class="choices" role="radiogroup" aria-label="Image type">
+            <button class="choice on" data-type="logo" role="radio" aria-checked="true">
+              <strong>Logo or icon</strong>
+              <span>Solid colours, crisp edges, maybe text</span>
+            </button>
+            <button class="choice" data-type="illustration" role="radio" aria-checked="false">
+              <strong>Illustration</strong>
+              <span>Artwork with flat colours, some soft edges or glows</span>
+            </button>
+            <button class="choice" data-type="detailed" role="radio" aria-checked="false">
+              <strong>Photo or detailed art</strong>
+              <span>Shading, gradients, lots of colours</span>
+            </button>
+            <button class="choice" data-type="bw" role="radio" aria-checked="false">
+              <strong>Black &amp; white drawing</strong>
+              <span>Line art, sketches, signatures, scans</span>
+            </button>
           </div>
-        </div>
-        <label class="check" title="Trims the SVG to the drawing">
-          <input type="checkbox" id="crop"> Crop to content
-        </label>
-        <label class="row indent" id="padRow"><span>Padding</span><output id="padOut">0 px</output></label>
-        <input type="range" class="indent" id="pad" min="0" max="32" step="1" value="0" aria-label="Crop padding">
-      </section>
+        </section>
+
+        <section class="step" data-step="2">
+          <h3><span class="num">2</span> What about the background?</h3>
+          <div class="choices" role="radiogroup" aria-label="Background">
+            <button class="choice on" data-bg="keep" role="radio" aria-checked="true">
+              <strong>Keep it</strong>
+              <span>Everything in the picture becomes part of the SVG</span>
+            </button>
+            <button class="choice" data-bg="auto" role="radio" aria-checked="false">
+              <strong>Remove it</strong>
+              <span>Btrace removes the colour around the edges</span>
+            </button>
+            <button class="choice" data-bg="click" role="radio" aria-checked="false">
+              <strong>Let me click parts away</strong>
+              <span>Click anything on the picture to remove it</span>
+            </button>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="gCrop"> Trim empty space around it
+          </label>
+          <p class="help" id="gClickHelp" hidden>
+            Click a shape on the picture to remove it. Shift-click removes every shape of that colour
+            (handy for backgrounds showing through letters). <span id="gRemoved"></span>
+            <button id="gUndo" class="link" hidden>Undo</button>
+          </p>
+        </section>
+
+        <section class="step" data-step="3">
+          <h3><span class="num">3</span> <span id="gColourTitle">Colours</span></h3>
+          <div id="gColours">
+            <p class="help" id="gFound">Open an image to see the colours Btrace finds.</p>
+            <div class="swatches big" id="gSwatches"></div>
+            <div class="stepper" id="gStepper" hidden>
+              <span>Number of colours</span>
+              <div class="seg">
+                <button id="gFewer" aria-label="Fewer colours">−</button>
+                <button id="gCount" class="count" title="Back to automatic">Auto</button>
+                <button id="gMore" aria-label="More colours">+</button>
+              </div>
+            </div>
+          </div>
+          <div id="gDetail" hidden>
+            <p class="help">How much detail to keep. More detail means more shapes and a bigger file.</p>
+            <div class="seg wide" role="radiogroup" aria-label="Detail">
+              <button data-detail="low">Less</button>
+              <button data-detail="normal" class="on">Normal</button>
+              <button data-detail="high">More</button>
+            </div>
+          </div>
+          <div id="gBw" hidden>
+            <p class="help">If lines look too thick or are breaking up, adjust the ink level.</p>
+            <div class="seg wide" role="radiogroup" aria-label="Ink">
+              <button data-ink="light">Lighter</button>
+              <button data-ink="normal" class="on">Normal</button>
+              <button data-ink="dark">Bolder</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="step done">
+          <button id="gDownload" class="btn primary big" disabled>Download SVG</button>
+          <p class="help center" id="gSummary">Drag the divider on the picture to compare with the original.</p>
+        </section>
+      </div>
+
+      <!-- ===== Fine-tune: every control, explained ===== -->
+      <div id="advanced" hidden>
+        <section>
+          <h2>Tracing method</h2>
+          <div class="seg wide" role="group" aria-label="Tracing method">
+            <button data-mode="snap" class="on">Flat colour</button>
+            <button data-mode="color">Detailed</button>
+            <button data-mode="bw">B&amp;W</button>
+          </div>
+          <p class="help">Flat colour gives clean shapes in a few solid colours. Detailed keeps shading and gradients as many small shapes. B&amp;W makes everything black or transparent.</p>
+        </section>
+
+        <section data-for="snap">
+          <h2>Colours</h2>
+          <label class="row"><span>Palette size</span><output id="maxColorsOut">Auto</output></label>
+          <input type="range" id="maxColors" min="0" max="16" step="1" value="0" aria-label="Palette size">
+          <p class="help">How many colours the SVG may use. Auto finds the real colours in the image; lower it to merge similar ones.</p>
+          <div class="swatches" id="swatches" aria-label="Colours in the trace"></div>
+          <label class="row"><span>Soft-edge smoothing</span><output id="smoothOut">1.2</output></label>
+          <input type="range" id="smooth" min="0" max="3" step="0.1" value="1.2" aria-label="Soft-edge smoothing">
+          <p class="help">Tidies blurry or glowing edges so they don't come out jagged. Crisp edges are never touched.</p>
+        </section>
+
+        <section data-for="color">
+          <h2>Colours</h2>
+          <label class="row"><span>Colour precision</span><output id="precisionOut">6</output></label>
+          <input type="range" id="precision" min="1" max="8" step="1" value="6" aria-label="Colour precision">
+          <p class="help">Higher keeps subtler colour differences apart. Lower merges near-identical colours.</p>
+          <label class="row"><span>Gradient step</span><output id="gradientOut">16</output></label>
+          <input type="range" id="gradient" min="1" max="64" step="1" value="16" aria-label="Gradient step">
+          <p class="help">How finely shading is split into bands. Smaller steps look smoother but make many more shapes.</p>
+        </section>
+
+        <section data-for="bw">
+          <h2>Ink</h2>
+          <label class="row"><span>Threshold</span><output id="thresholdOut">128</output></label>
+          <input type="range" id="threshold" min="1" max="254" step="1" value="128" aria-label="Threshold">
+          <p class="help">How dark a pixel must be to count as ink. Higher catches fainter lines.</p>
+          <label class="check"><input type="checkbox" id="adaptive"> Adaptive (uneven lighting)</label>
+          <p class="help">For photos of paper or scans with shadows: judges ink against its surroundings instead.</p>
+        </section>
+
+        <section>
+          <h2>Shapes</h2>
+          <label class="row"><span>Simplify</span><output id="simplifyOut">0.25 px</output></label>
+          <input type="range" id="simplify" min="0" max="1.5" step="0.05" value="0.25" aria-label="Simplify">
+          <p class="help">How far curves may drift from the image to use fewer points. Higher gives smoother outlines and smaller files.</p>
+          <label class="row"><span>Speckle filter</span><output id="speckleOut">4 px</output></label>
+          <input type="range" id="speckle" min="0" max="32" step="1" value="4" aria-label="Speckle filter">
+          <p class="help">Removes dots and specks smaller than this. Raise it if the trace is full of tiny bits.</p>
+          <label class="check">
+            <input type="checkbox" id="lines" checked> Straight lines &amp; sharp corners
+          </label>
+          <p class="help">Makes straight edges perfectly straight and gives corners a sharp point. Turn off for hand-drawn, organic shapes.</p>
+        </section>
+
+        <section>
+          <h2>Background &amp; crop</h2>
+          <label class="check"><input type="checkbox" id="removeBg"> Remove background</label>
+          <p class="help">Removes the colour around the image's border.</p>
+          <div class="removed">
+            <span id="removedCount" class="muted">Use the Remove tool to click away regions.</span>
+            <div class="btns">
+              <button id="undoRemove" class="btn small" disabled title="Undo last removal (Ctrl+Z)">Undo</button>
+              <button id="clearRemove" class="btn small" disabled>Clear</button>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="crop"> Crop to content</label>
+          <label class="row indent" id="padRow"><span>Padding</span><output id="padOut">0 px</output></label>
+          <input type="range" class="indent" id="pad" min="0" max="32" step="1" value="0" aria-label="Crop padding">
+          <p class="help">Trims the SVG to the drawing, with optional space around it.</p>
+        </section>
+      </div>
 
       <section class="stats">
         <h2>Output</h2>
