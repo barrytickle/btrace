@@ -198,8 +198,11 @@ input[type=range]:disabled, .row.disabled { opacity: .4; }
 .btn.big { width: 100%; padding: 11px; font-size: 14px; }
 .step.done { gap: 10px; }
 
-.badge {
+.badges {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: grid; gap: 6px; justify-items: center; pointer-events: none;
+}
+.badge {
   background: rgba(15,17,21,.9); border: 1px dashed var(--accent); border-radius: 999px;
   padding: 4px 12px; color: var(--accent); font-size: 12px; pointer-events: none; white-space: nowrap;
 }
@@ -246,3 +249,8 @@ input[type=range]:disabled, .row.disabled { opacity: .4; }
   display: none; place-items: center; background: rgba(0,0,0,.65); color: #fff; font-size: 13px; line-height: 1;
 }
 .bitem:hover .bx { display: grid; }
+
+/* ---- bounds overlay ------------------------------------------------------------- */
+.bounds-layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
+.bounds-layer[hidden] { display: none; }
+.badge.amber { border-color: #f5b942; color: #f5b942; }

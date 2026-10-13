@@ -177,6 +177,7 @@ function showResult(result, cropped, ms) {
   setStatus(`Traced in ${Math.round(ms)} ms`);
   showGuidedResult(result, out, bytes);
   batchCurrentTraced(result, cropped);
+  updateBounds();
 }
 
 function updateOutlines() {
@@ -277,6 +278,12 @@ function layout() {
   stage.style.width = `${state.width * state.zoom}px`;
   stage.style.height = `${state.height * state.zoom}px`;
   original.classList.toggle("pixelated", state.zoom >= 3);
+  // Keep the whitespace hatching about 8 screen px apart at any zoom.
+  const hatch = $("hatch");
+  hatch.setAttribute("width", 8 / state.zoom);
+  hatch.setAttribute("height", 8 / state.zoom);
+  hatch.firstElementChild.setAttribute("width", 3 / state.zoom);
+  hatch.firstElementChild.setAttribute("height", 8 / state.zoom);
   ui.zoomLabel.textContent = `${Math.round(state.zoom * 100)}%`;
 
   const pct = state.split * 100;
@@ -515,6 +522,7 @@ window.addEventListener("keydown", (e) => {
   if (k === "r") setTool("remove");
   else if (k === "h") setTool("pan");
   else if (k === "o") toggleOutlines();
+  else if (k === "b") toggleBounds();
   else if (k === "v") setView({ split: "trace", trace: "original", original: "split" }[state.view]);
   else if (k === "0") state.loaded && fit();
   else if (k === "+" || k === "=") zoomCentre(1.25);
@@ -1027,4 +1035,73 @@ function zipStore(files) {
   end.setUint32(16, offset, true);
   return new Blob([...parts, ...central, end], { type: "application/zip" });
 }
+
+// ---- bounds: the SVG's edge and the empty space around the drawing --------------------
+//
+// A dashed frame marks the edge of the SVG as it will be saved, and hatching
+// shades the space between that edge and the drawing, so it's easy to see
+// whether trimming would help. With "Trim empty space" on, the frame is the
+// trimmed canvas (drawing + padding), mirroring the engine's crop.
+
+function boundsOn() {
+  return $("boundsBtn").getAttribute("aria-pressed") === "true";
+}
+
+function toggleBounds(on = !boundsOn()) {
+  $("boundsBtn").setAttribute("aria-pressed", on);
+  $("boundsBtn").classList.toggle("on", on);
+  updateBounds();
+}
+
+/// The saved SVG's canvas in source px: the whole image, or the crop.
+function savedCanvas(b) {
+  if (!ui.crop.checked) return { x: 0, y: 0, w: state.width, h: state.height };
+  const pad = +ui.pad.value;
+  const bw = b[2] - b[0] + 2 * pad;
+  const bh = b[3] - b[1] + 2 * pad;
+  const w = Math.max(1, Math.ceil(bw));
+  const h = Math.max(1, Math.ceil(bh));
+  // The engine centres the drawing in the rounding slack.
+  return { x: b[0] - pad - (w - bw) / 2, y: b[1] - pad - (h - bh) / 2, w, h };
+}
+
+function updateBounds() {
+  const layer = $("boundsLayer");
+  const badge = $("boundsBadge");
+  const b = state.result?.bounds;
+  const show = boundsOn() && state.loaded && b;
+  // An <svg> has no `hidden` property (that's HTMLElement); use the attribute.
+  layer.toggleAttribute("hidden", !show);
+  badge.hidden = !show;
+  if (!show) return;
+
+  const c = savedCanvas(b);
+  layer.setAttribute("viewBox", `0 0 ${state.width} ${state.height}`);
+  const set = (el, x, y, w, h) => {
+    el.setAttribute("x", x);
+    el.setAttribute("y", y);
+    el.setAttribute("width", w);
+    el.setAttribute("height", h);
+  };
+  set($("boundsCanvas"), c.x, c.y, c.w, c.h);
+  set($("boundsContent"), b[0], b[1], b[2] - b[0], b[3] - b[1]);
+  $("boundsSpace").setAttribute(
+    "d",
+    `M${c.x},${c.y}h${c.w}v${c.h}h${-c.w}Z M${b[0]},${b[1]}h${b[2] - b[0]}v${b[3] - b[1]}h${b[0] - b[2]}Z`,
+  );
+
+  const r = (v) => Math.max(0, Math.round(v));
+  const m = { top: r(b[1] - c.y), right: r(c.x + c.w - b[2]), bottom: r(c.y + c.h - b[3]), left: r(b[0] - c.x) };
+  const total = m.top + m.right + m.bottom + m.left;
+  const sides = `${m.top} top · ${m.right} right · ${m.bottom} bottom · ${m.left} left`;
+  badge.textContent = ui.crop.checked
+    ? `Trimmed to ${c.w} × ${c.h} px · space around the drawing: ${sides}`
+    : total === 0
+      ? `SVG ${c.w} × ${c.h} px · no empty space around the drawing`
+      : `SVG ${c.w} × ${c.h} px · empty space: ${sides} px · "Trim empty space" removes it`;
+}
+
+$("boundsBtn").onclick = () => toggleBounds();
+for (const el of [ui.crop, ui.pad, g.crop]) el.addEventListener("input", updateBounds);
+for (const el of [ui.crop, g.crop]) el.addEventListener("change", updateBounds);
 

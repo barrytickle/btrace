@@ -58,6 +58,9 @@ struct Rendered {
     shapes: usize,
     /// Colors in the output, most-used (by shape count) first, `#rrggbb`.
     colors: Vec<String>,
+    /// Exact extent of the drawing, `[min_x, min_y, max_x, max_y]` in canvas
+    /// px (glows count by their spread); `None` if nothing was drawn.
+    bounds: Option<[f64; 4]>,
 }
 
 fn err(msg: impl std::fmt::Display) -> JsValue {
@@ -180,7 +183,9 @@ impl Tracer {
         let mut colors: Vec<([u8; 3], usize)> = counts.into_iter().collect();
         colors.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
+        let bounds = vtracer::optimize::bounds(&doc).map(|(a, b)| [a.x, a.y, b.x, b.y]);
         let out = Rendered {
+            bounds,
             svg: writer.write(&doc),
             width: doc.width,
             height: doc.height,

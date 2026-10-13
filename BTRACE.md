@@ -119,11 +119,13 @@ http://127.0.0.1:8765 and opens it.
 - **Open:** button, drag and drop, or paste.
 - **View:** split (drag the divider), trace only, original only; scroll to
   zoom, drag to pan. **Outlines** (toolbar toggle, O) draws every path edge
-  as a dashed guide; it is never part of the SVG.
+  as a dashed guide; it is never part of the SVG. **Bounds** (B) frames the SVG's
+  edge, hatches the empty space around the drawing and lists the margins in
+  px; with "Trim empty space" on it shows the trimmed canvas instead.
 - **Remove tool (R):** click a region to remove it, Shift-click to remove its
   whole colour. Removals show in the top bar with Undo (Ctrl+Z) and Clear,
   in both Guided and Fine-tune.
-- **Keys:** V cycles views, H pan, O outlines, 0 fit, +/- zoom, Ctrl+S
+- **Keys:** V cycles views, H pan, O outlines, B bounds, 0 fit, +/- zoom, Ctrl+S
   download, Space-drag pans in any tool.
 - **Batch:** open or drop several images at once. Each is traced in the
   background with the current settings (a strip at the bottom shows

@@ -51,6 +51,7 @@
         </div>
         <div class="seg">
           <button id="outlines" aria-pressed="false" title="Show every shape's edge as a dashed guide, to inspect the trace. Never part of the SVG (O)">Outlines</button>
+          <button id="boundsBtn" aria-pressed="false" title="Show the SVG's edge and shade the empty space around the drawing (B)">Bounds</button>
         </div>
       </div>
 
@@ -58,6 +59,16 @@
         <div class="stage" id="stage">
           <img id="original" alt="Original image" draggable="false">
           <div class="trace-layer" id="traceLayer"><img id="trace" alt="Traced vector" draggable="false"></div>
+          <svg class="bounds-layer" id="boundsLayer" preserveAspectRatio="none" aria-hidden="true" hidden>
+            <defs>
+              <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+                <rect width="3" height="8" fill="rgba(245,185,66,.45)"/>
+              </pattern>
+            </defs>
+            <path id="boundsSpace" fill="url(#hatch)" fill-rule="evenodd"/>
+            <rect id="boundsContent" fill="none" stroke="rgba(245,185,66,.9)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+            <rect id="boundsCanvas" fill="none" stroke="#f5b942" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>
+          </svg>
           <div class="divider" id="divider" role="slider" aria-label="Split position" tabindex="0"><span></span></div>
         </div>
         <div class="empty" id="empty">
@@ -68,7 +79,10 @@
           </div>
         </div>
         <div class="hint" id="hint" hidden></div>
-        <div class="badge" id="guideBadge" hidden>Outlines shown · not part of the SVG</div>
+        <div class="badges">
+          <div class="badge" id="guideBadge" hidden>Outlines shown · not part of the SVG</div>
+          <div class="badge amber" id="boundsBadge" hidden></div>
+        </div>
       </div>
       <div class="batch" id="batch" role="region" aria-label="Batch" hidden>
         <div class="batch-head">
