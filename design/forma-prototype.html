@@ -111,9 +111,12 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
   background-size: 20px 20px; background-position: 0 0, 10px 10px; border: 1px solid var(--line);
 }
 .canvas img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.canvas .after { clip-path: inset(0 0 0 50%); }
-.canvas.paired > img.orig { clip-path: inset(0 50% 0 0); }
-.canvas .split { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--accent); }
+.canvas .after { clip-path: inset(0 0 0 var(--split, 50%)); }
+.canvas.paired > img.orig { clip-path: inset(0 calc(100% - var(--split, 50%)) 0 0); }
+.canvas .split { position: absolute; top: 0; bottom: 0; left: var(--split, 50%); width: 2px; margin-left: -1px; background: var(--accent); cursor: ew-resize; touch-action: none; z-index: 1; }
+.canvas .split::before { content: ""; position: absolute; top: 0; bottom: 0; left: -12px; width: 26px; }  /* easier to grab */
+.canvas .split:focus-visible { outline: none; }
+.canvas .split:focus-visible::after { box-shadow: 0 0 0 3px var(--accent-soft); }
 .canvas .split::after { content: "‹ ›"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
 .canvas .tag { position: absolute; top: 10px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-2); }
 .canvas .tag.l { left: 10px; } .canvas .tag.r { right: 10px; }
@@ -520,6 +523,7 @@ const S = {
   removedStack: [],      // undo history: each entry is a list of shape ids
   tool: "compare",       // Review: compare | remove
   recolor: {},           // palette edits: { navy: "#rrggbb", ... }
+  split: 0.5,            // compare divider position (0 = all SVG, 1 = all original)
 };
 const SPECKS = ["speck1", "speck2"];
 const RECOMMENDED = { type: "logo", bg: "remove", trim: true, colours: 4, lines: true };
@@ -594,13 +598,13 @@ function picture({ split = true, hint = "", analysing = false, inline = false } 
   if (removing) hint = "Click anything to remove it, background too · Shift-click: every shape that colour · Esc to stop";
   else if (inline && S.tool === "preview") hint = "Your SVG as it will be saved · the grid shows transparency";
   const paired = (split || inline) && !full;
-  return `<div class="canvas${full ? " full" : ""}${paired ? " paired" : ""}">
+  return `<div class="canvas${full ? " full" : ""}${paired ? " paired" : ""}" style="--split:${S.split * 100}%">
       <img class="orig" src="${rasterURL}" alt="Original image" style="image-rendering:auto">
       ${tools}
       ${inline ? `<div class="after vec${removing ? " removing" : ""}" role="img" aria-label="Traced vector">${current()}</div>
-      <div class="split" aria-hidden="true"></div>
+      <div class="split" role="slider" tabindex="0" aria-label="Compare: drag to reveal more of the original or the SVG" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(S.split * 100)}"></div>
       <span class="tag l">Original PNG</span><span class="tag r">PixPath SVG</span>` : split ? `<img class="after" src="${after}" alt="Traced vector">
-      <div class="split" aria-hidden="true"></div>
+      <div class="split" role="slider" tabindex="0" aria-label="Compare: drag to reveal more of the original or the SVG" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(S.split * 100)}"></div>
       <span class="tag l">Original PNG</span><span class="tag r">PixPath SVG</span>` : ""}
       ${bounds}
       ${hint ? `<span class="hint">${hint}</span>` : ""}
@@ -1274,6 +1278,35 @@ document.addEventListener("click", (e) => {
       r.dataset.theme = dark ? "light" : "dark";
     },
   })[a]?.();
+});
+
+// Compare divider: drag it, or focus it and use the arrow keys.
+function setSplit(canvas, v) {
+  S.split = Math.min(1, Math.max(0, v));
+  canvas.style.setProperty("--split", `${S.split * 100}%`);
+  canvas.querySelector(".split")?.setAttribute("aria-valuenow", Math.round(S.split * 100));
+}
+document.addEventListener("pointerdown", (e) => {
+  const handle = e.target.closest(".canvas .split");
+  if (!handle) return;
+  const canvas = handle.closest(".canvas");
+  handle.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    const r = canvas.getBoundingClientRect();
+    setSplit(canvas, (ev.clientX - r.left) / r.width);
+  };
+  move(e);
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", () => handle.removeEventListener("pointermove", move), { once: true });
+  e.preventDefault();
+});
+document.addEventListener("keydown", (e) => {
+  const handle = e.target.closest?.(".canvas .split");
+  if (!handle || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+  const step = e.shiftKey ? 0.1 : 0.02;
+  const v = { ArrowLeft: S.split - step, ArrowRight: S.split + step, Home: 0, End: 1 }[e.key];
+  setSplit(handle.closest(".canvas"), v);
+  e.preventDefault();
 });
 
 // Accordion rows remember whether they're open across re-renders.
