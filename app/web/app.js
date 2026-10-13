@@ -2,6 +2,9 @@
 
 const $ = (id) => document.getElementById(id);
 
+// The Tauri API when running as the desktop app; undefined in a browser.
+const desktop = window.__TAURI__;
+
 const ui = {
   open: $("open"), openInline: $("openInline"), file: $("file"), filename: $("filename"),
   status: $("status"), download: $("download"),
@@ -174,12 +177,23 @@ function updateOutlines() {
   if (!existing) ui.traceLayer.append(img);
 }
 
-function download() {
+async function download() {
   const out = state.cropped ?? state.result;
   if (!out) return;
+  const name = `${state.name.replace(/\.[^.]+$/, "") || "trace"}.svg`;
+  if (desktop) {
+    // Desktop: a native "Save as" dialog (a webview download has nowhere to go).
+    try {
+      const path = await desktop.core.invoke("save_svg", { name, contents: out.svg });
+      if (path) setStatus(`Saved ${path.split(/[\/]/).pop()}`);
+    } catch (e) {
+      setStatus(String(e), "error");
+    }
+    return;
+  }
   const a = document.createElement("a");
   a.href = svgURL(out.svg);
-  a.download = `${state.name.replace(/\.[^.]+$/, "") || "trace"}.svg`;
+  a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
@@ -651,3 +665,51 @@ document.querySelectorAll("[data-panel]").forEach((b) => {
 
 applyType("logo");
 setView("split");
+
+// ---- desktop: version and auto-update ----------------------------------------------
+//
+// On start-up the desktop app asks GitHub Releases whether a newer, signed
+// build exists. If so a banner offers to install it; nothing happens without
+// a click, and being offline is not an error.
+
+async function checkForUpdate() {
+  if (!desktop?.updater) return;
+  let update;
+  try {
+    update = await desktop.updater.check();
+  } catch {
+    return; // offline, or no release published yet
+  }
+  if (!update) return;
+  $("updateText").textContent = `Btrace ${update.version} is available`;
+  $("update").hidden = false;
+  $("updateLater").onclick = () => ($("update").hidden = true);
+  $("updateInstall").onclick = async () => {
+    $("updateInstall").disabled = $("updateLater").disabled = true;
+    let total = 0;
+    let done = 0;
+    try {
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") total = event.data.contentLength || 0;
+        if (event.event === "Progress") {
+          done += event.data.chunkLength;
+          const pct = total ? ` ${Math.round((done / total) * 100)}%` : "";
+          $("updateText").textContent = `Downloading Btrace ${update.version}…${pct}`;
+        }
+        if (event.event === "Finished") $("updateText").textContent = "Installing…";
+      });
+      await desktop.process.relaunch();
+    } catch (e) {
+      $("updateText").textContent = `Update failed: ${e}`;
+      $("updateLater").disabled = false;
+    }
+  };
+}
+
+if (desktop) {
+  desktop.app?.getVersion().then((v) => {
+    $("version").textContent = `v${v}`;
+    $("version").hidden = false;
+  });
+  checkForUpdate();
+}

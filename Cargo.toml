@@ -16,6 +16,8 @@ exclude = [
     "nodejs",
     # Btrace app core; wasm-bindgen cdylib built with wasm-pack (--target web).
     "app/wasm",
+    # Btrace desktop app (Tauri); built with the Tauri CLI from app/desktop.
+    "app/desktop/src-tauri",
 ]
 
 resolver = "2"

@@ -1,0 +1,64 @@
+name: Desktop release
+
+# Builds the Btrace desktop installer (Windows) and publishes it as a GitHub
+# Release together with latest.json, which installed copies of the app check
+# to auto-update. Runs when a version tag (v1.2.3) is pushed; app/desktop/
+# release.ps1 bumps the version and pushes the tag.
+#
+# Needs the repository secret TAURI_SIGNING_PRIVATE_KEY: the contents of the
+# private updater key (the app only installs updates signed with it).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            app/wasm -> target
+            app/desktop/src-tauri -> target
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install desktop tooling
+        working-directory: app/desktop
+        run: npm ci
+
+      - name: Build engine (WebAssembly)
+        shell: pwsh
+        run: ./app/build.ps1
+
+      - name: Build installer and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: Btrace ${{ github.ref_name }}
+          releaseBody: Download the setup .exe below to install Btrace. Installed copies update themselves.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Btrace",
+  "version": "0.1.0",
+  "identifier": "com.barrytickle.btrace",
+  "build": {
+    "frontendDist": "../../web"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Btrace",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 760,
+        "minHeight": 520,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "publisher": "Barry Tickle",
+    "shortDescription": "Turn images into clean SVG vectors",
+    "longDescription": "Btrace converts raster images (PNG, JPEG, WebP) into vector SVGs: logos, icons, illustrations and line art.",
+    "copyright": "Btrace by Barry Tickle. Based on visioncortex VTracer (MIT/Apache-2.0).",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5NTgxQTYxN0MyNzQzQjkKUldTNVF5ZDhZUnBZS2JXdE9HTmNJZHM1VjVvcXlDS3Q3M2p3UURnaHBnOWYvUGo0NzdtbXdBMlIK",
+      "endpoints": [
+        "https://github.com/barrytickle/btrace/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

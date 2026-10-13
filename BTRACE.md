@@ -126,6 +126,30 @@ http://127.0.0.1:8765 and opens it.
 - **Keys:** V cycles views, H pan, O outlines, 0 fit, +/- zoom, Ctrl+S
   download, Space-drag pans in any tool.
 
+## Desktop app and releases
+
+`app/desktop/` wraps the same UI in a native window with
+[Tauri 2](https://tauri.app): a normal Windows installer, a native "Save as"
+dialog, drag and drop from Explorer, and **automatic updates**.
+
+- **Build locally:** `cd app/desktop`, `npm install` once, then `npm run build`.
+  The installer lands in `app/desktop/src-tauri/target/release/bundle/nsis/`.
+  Building update artifacts needs the signing key:
+  `$env:TAURI_SIGNING_PRIVATE_KEY = "$env:USERPROFILE\.tauritrace.key"`.
+- **Release:** `powershell -ExecutionPolicy Bypass -File app\desktopelease.ps1 0.2.0`
+  sets the version, commits, tags `v0.2.0` and pushes. The *Desktop release*
+  GitHub Action builds the signed installer and publishes the GitHub Release
+  with `latest.json`.
+- **Updates:** on start-up the app reads
+  `releases/latest/download/latest.json`; if there is a newer version a banner
+  offers **Install & restart**. Updates must be signed with the private key
+  (`~/.tauri/btrace.key`, never committed; its public half is in
+  `tauri.conf.json`). The Action reads it from the repository secret
+  `TAURI_SIGNING_PRIVATE_KEY`. **Keep a backup of that key file**: without it
+  no future update can be signed for installed copies.
+- Releases go out when you run the release script, not on every push to
+  `main`, so work in progress never reaches installed apps.
+
 ## Lab
 
 `lab/` is the test bench:
@@ -146,4 +170,4 @@ http://127.0.0.1:8765 and opens it.
 - Smooth gradients across whole areas (shading, not just glowing edges).
 - A broader sample set (line art, game UI, gradients) so tuning isn't
   logo-only.
-- A desktop build with an installer and automatic updates.
+- Code-signing the installer (removes Windows' "unknown publisher" warning).

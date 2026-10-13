@@ -1,0 +1,27 @@
+[package]
+name = "btrace-desktop"
+description = "Btrace desktop app: the Btrace web UI in a native window, with auto-updates."
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Built with the Tauri CLI (`npm run build` in app/desktop), not part of the
+# core workspace. The tracing engine runs as WebAssembly inside the app's
+# web UI (app/web), exactly as in the browser.
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
+# Used by code that tauri::generate_context! expands (plugin config).
+serde_json = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

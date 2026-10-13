@@ -1,0 +1,15 @@
+{
+  "name": "btrace-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Btrace desktop app (Tauri) around app/web.",
+  "scripts": {
+    "tauri": "tauri",
+    "engine": "powershell -NoProfile -ExecutionPolicy Bypass -File ../build.ps1",
+    "dev": "npm run engine && tauri dev",
+    "build": "npm run engine && tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}
