@@ -645,6 +645,21 @@ function edgeArt(kind) {
 --------------------------------------------------------------------------- */
 const stage = $("#stage"), panel = $("#panel"), foot = $("#foot"), stepper = $("#stepper");
 
+/// Buttons for the last screen of an image's flow. Inside a batch they move
+/// through the batch (a per-image Review stays one click away); a single
+/// upload goes on to Review. `reviewAct` is the action that opens Review.
+function finishButtons(reviewAct = "review") {
+  const ctx = S.batchCtx?.mode;
+  const review = (label) => `<button class="btn" data-act="${reviewAct}">${label}</button>`;
+  if (ctx === "each") {
+    const last = S.editing + 1 >= S.items.length;
+    return `${review("Review this image")}<button class="btn primary" data-act="nextImage">${last ? "Finish · review the batch →" : `Next image (${S.editing + 2} of ${S.items.length}) →`}</button>`;
+  }
+  if (ctx === "edit") return `${review("Review this image")}<button class="btn primary" data-act="finishEdit">Done · back to batch review →</button>`;
+  if (ctx === "same") return `${review("Review first")}<button class="btn primary" data-act="applyAll">Apply to all ${S.items.length} →</button>`;
+  return `<button class="btn primary" data-act="${reviewAct}">Review →</button>`;
+}
+
 function drawStepper(active) {
   const steps = ["Image type", "Background", "Colours", "Details", "Review"];
   stepper.hidden = false;
@@ -727,7 +742,7 @@ const screens = {
         </div>`;
       }).join("")}</div>
       <div class="tip">${icon.bulb}<span>Want a say in each step? <button class="link" data-act="wizard">Walk through it guided</button> or <button class="link" data-act="advanced">open Advanced</button>.</span></div>`;
-    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div><button class="btn primary" data-act="review">Review →</button>`;
+    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div>${finishButtons()}`;
   },
 
   wizard() {
@@ -785,7 +800,7 @@ const screens = {
     foot.innerHTML = `<button class="btn" data-act="${S.step === 1 ? "mode" : "prev"}">← Back</button>
       <button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button>
       <div class="spacer"></div>
-      <button class="btn primary" data-act="next">Continue to ${nextName.toLowerCase()} →</button>`;
+      ${S.step === 4 ? finishButtons("next") : `<button class="btn primary" data-act="next">Continue to ${nextName.toLowerCase()} →</button>`}`;
   },
 
   // Every mode ends here: the result, every decision with a way back to
@@ -848,7 +863,7 @@ const screens = {
             ? `<button class="btn primary" data-act="nextImage">Next image (${S.editing + 2} of ${S.items.length}) →</button>`
             : `<button class="btn primary" data-act="nextImage">Finish · review the batch →</button>`
           : S.editing != null
-            ? `<button class="btn primary" data-act="finishEdit">Done · back to batch</button>`
+            ? `<button class="btn primary" data-act="finishEdit">Done · back to batch review →</button>`
             : `<button class="btn" data-act="toast:SVG code copied, ready to paste">Copy SVG</button><button class="btn primary" data-act="save">Save SVG</button>`}`;
   },
 
@@ -871,7 +886,7 @@ const screens = {
         <button class="toggle${S.trim ? " on" : ""}" data-toggle="trim"><span class="t"><strong>Trim empty space</strong><span>Fit the SVG to the drawing</span></span><span class="sw"></span></button>
         <button class="toggle${S.lines ? " on" : ""}" data-toggle="lines"><span class="t"><strong>Straight lines &amp; sharp corners</strong><span>Off for hand-drawn, organic shapes</span></span><span class="sw"></span></button>
       </div>`;
-    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div><button class="btn primary" data-act="review">Review →</button>`;
+    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div>${finishButtons()}`;
   },
 
   batch() {
