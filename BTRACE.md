@@ -78,7 +78,7 @@ MSVC linker.
 
 ```
 cargo build --release -p vtracer-cli
-target\release\vtracer.exe in.png out.svg --clustering snap --hierarchical cutout --simplify 2
+target\release\vtracer.exe in.png out.svg --clustering snap --hierarchical cutout --simplify 0.25 --lines
 ```
 
 ## Lab
