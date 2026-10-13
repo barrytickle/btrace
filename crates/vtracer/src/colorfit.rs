@@ -7,15 +7,18 @@
 //!   area-weighted median cut.
 //! * [`MergeAdjacent`] — union consecutive layers that share a paint, cutting
 //!   shape count for free.
+//! * [`RemoveRegions`] — erase regions picked by point, or the background.
 
 mod merge;
 pub(crate) mod oklab;
 mod palette;
 mod quantize;
+mod remove;
 
 pub use merge::MergeAdjacent;
 pub use palette::FixedPalette;
 pub use quantize::AutoQuantize;
+pub use remove::{Removal, RemoveRegions};
 
 use crate::ir::Segmentation;
 

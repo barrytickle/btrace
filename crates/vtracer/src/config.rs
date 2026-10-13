@@ -4,7 +4,9 @@ use std::str::FromStr;
 
 use visioncortex::Color;
 
-use crate::colorfit::{AutoQuantize, ColorFitter, FixedPalette, Identity, MergeAdjacent};
+use crate::colorfit::{
+    AutoQuantize, ColorFitter, FixedPalette, Identity, MergeAdjacent, Removal, RemoveRegions,
+};
 use crate::compose::Compositing;
 use crate::error::Error;
 use crate::fitter::{CurveFitter, FitParams, PixelFitter, PolygonFitter, SplineFitter};
@@ -14,7 +16,7 @@ use crate::frontend::{
 use crate::mosaic::{
     PixelSegmentFitter, PolygonSegmentFitter, SegmentFitter, SplineSegmentFitter,
 };
-use crate::optimize::{CleanupPass, OptimizerPass, QuantizePass};
+use crate::optimize::{CleanupPass, CropPass, OptimizerPass, QuantizePass};
 use crate::pipeline::Pipeline;
 use crate::simplify::{CurvePass, SimplifyCurves};
 use crate::svg::SvgWriter;
@@ -154,6 +156,18 @@ pub struct Config {
     /// edges only, such as glows, so they snap to a clean edge instead of a
     /// grainy one. Crisp edges and corners are untouched. 0 = off.
     pub snap_smooth: f64,
+    /// Regions to erase, picked by point in source pixels (a "remove
+    /// background" click). Runs after clustering, so a [`Session`] applies
+    /// clicks without re-segmenting.
+    ///
+    /// [`Session`]: crate::Session
+    pub remove: Vec<Removal>,
+    /// Erase the background automatically: the color covering most of the
+    /// image border, in every region of that color touching the border.
+    pub remove_background: bool,
+    /// Trim the canvas to the drawing's bounds plus this padding (px).
+    /// `None` = keep the source size.
+    pub crop: Option<f64>,
 }
 
 impl Default for Config {
@@ -181,6 +195,9 @@ impl Default for Config {
             watershed_detail: 128,
             snap_scale: 0,
             snap_smooth: 1.2,
+            remove: Vec::new(),
+            remove_background: false,
+            crop: None,
         }
     }
 }
@@ -259,6 +276,18 @@ impl Config {
     }
 
     fn color_fitters(&self) -> Vec<Box<dyn ColorFitter>> {
+        let mut fitters = self.palette_fitters();
+        let remove = RemoveRegions {
+            removals: self.remove.clone(),
+            background: self.remove_background,
+        };
+        if !remove.is_empty() {
+            fitters.push(Box::new(remove));
+        }
+        fitters
+    }
+
+    fn palette_fitters(&self) -> Vec<Box<dyn ColorFitter>> {
         if self.clustering == Clustering::Snap {
             // Paints are already exact palette colors; just join same-paint runs.
             vec![Box::new(MergeAdjacent)]
@@ -307,14 +336,17 @@ impl Config {
     }
 
     fn optimizers(&self) -> Vec<Box<dyn OptimizerPass>> {
-        if self.optimize == 0 {
-            return Vec::new();
+        let mut passes: Vec<Box<dyn OptimizerPass>> = Vec::new();
+        // Crop first, so quantization rounds the final coordinates.
+        if let Some(padding) = self.crop {
+            passes.push(Box::new(CropPass { padding }));
         }
-        let precision = self.path_precision.unwrap_or(2);
-        vec![
-            Box::new(QuantizePass::new(precision)),
-            Box::new(CleanupPass),
-        ]
+        if self.optimize > 0 {
+            let precision = self.path_precision.unwrap_or(2);
+            passes.push(Box::new(QuantizePass::new(precision)));
+            passes.push(Box::new(CleanupPass));
+        }
+        passes
     }
 
     fn writer(&self) -> SvgWriter {

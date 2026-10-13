@@ -93,6 +93,7 @@ pub mod session;
 pub mod simplify;
 pub mod svg;
 
+pub use colorfit::Removal;
 pub use config::{Clustering, Config, FitMode, Hierarchical, Preset, SegmentKey};
 pub use error::Error;
 pub use frontend::Threshold;

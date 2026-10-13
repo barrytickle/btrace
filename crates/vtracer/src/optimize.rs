@@ -5,7 +5,9 @@
 //!   rounded geometry, and it bakes offsets into coordinates so the writer
 //!   never needs a per-path `translate`.
 //! * [`CleanupPass`] — drop zero-length and collinear-redundant segments that
-//!   quantization may have created. (Curve *simplification* is not an
+//!   quantization may have created.
+//! * [`CropPass`] — trim the canvas to the drawing's exact bounds (plus
+//!   padding), like svgcrop.com but from the geometry rather than pixels. (Curve *simplification* is not an
 //!   optimizer pass: it must run on shared fitted geometry before composition
 //!   — see [`crate::simplify`].)
 
@@ -152,6 +154,112 @@ impl OptimizerPass for CleanupPass {
     }
 }
 
+/// Trim the canvas to the exact bounding box of every shape, plus `padding`
+/// px on each side. Curves count by their true extent (a cubic can bulge
+/// past its endpoints), not their control points.
+///
+/// The canvas is whole pixels, so its size rounds up; the drawing is centred
+/// in that fractional slack (under half a pixel per side). Run before
+/// [`QuantizePass`] so rounding happens on the final coordinates.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CropPass {
+    pub padding: f64,
+}
+
+/// Exact bounds of a document's geometry: (min, max), or `None` if empty.
+pub fn bounds(doc: &VectorDoc) -> Option<(PointF64, PointF64)> {
+    let mut min = PointF64 { x: f64::INFINITY, y: f64::INFINITY };
+    let mut max = PointF64 { x: f64::NEG_INFINITY, y: f64::NEG_INFINITY };
+    let mut add = |p: PointF64| {
+        min.x = min.x.min(p.x);
+        min.y = min.y.min(p.y);
+        max.x = max.x.max(p.x);
+        max.y = max.y.max(p.y);
+    };
+    for shape in &doc.shapes {
+        for sub in &shape.path.subpaths {
+            let mut cur = PointF64::default();
+            for cmd in &sub.commands {
+                match *cmd {
+                    PathCmd::MoveTo(p) | PathCmd::LineTo(p) => {
+                        add(p);
+                        cur = p;
+                    }
+                    PathCmd::CubicTo(c1, c2, e) => {
+                        add(e);
+                        for t in cubic_extrema(cur, c1, c2, e) {
+                            add(cubic_at(cur, c1, c2, e, t));
+                        }
+                        cur = e;
+                    }
+                    PathCmd::Close => {}
+                }
+            }
+        }
+    }
+    (min.x <= max.x).then_some((min, max))
+}
+
+fn cubic_at(p0: PointF64, p1: PointF64, p2: PointF64, p3: PointF64, t: f64) -> PointF64 {
+    let u = 1.0 - t;
+    let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+    PointF64 {
+        x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+        y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+    }
+}
+
+/// Parameters in (0, 1) where the cubic's x or y derivative is zero.
+fn cubic_extrema(p0: PointF64, p1: PointF64, p2: PointF64, p3: PointF64) -> Vec<f64> {
+    let mut ts = Vec::new();
+    for (a0, a1, a2, a3) in [(p0.x, p1.x, p2.x, p3.x), (p0.y, p1.y, p2.y, p3.y)] {
+        // B'(t)/3 = a t^2 + b t + c
+        let a = -a0 + 3.0 * a1 - 3.0 * a2 + a3;
+        let b = 2.0 * (a0 - 2.0 * a1 + a2);
+        let c = a1 - a0;
+        if a.abs() < 1e-12 {
+            if b.abs() > 1e-12 {
+                ts.push(-c / b);
+            }
+        } else {
+            let disc = b * b - 4.0 * a * c;
+            if disc >= 0.0 {
+                let r = disc.sqrt();
+                ts.push((-b + r) / (2.0 * a));
+                ts.push((-b - r) / (2.0 * a));
+            }
+        }
+    }
+    ts.retain(|t| *t > 0.0 && *t < 1.0);
+    ts
+}
+
+impl OptimizerPass for CropPass {
+    fn run(&self, doc: &mut VectorDoc) {
+        let Some((min, max)) = bounds(doc) else { return };
+        let pad = self.padding.max(0.0);
+        let (bw, bh) = (max.x - min.x + 2.0 * pad, max.y - min.y + 2.0 * pad);
+        let (w, h) = (bw.ceil().max(1.0), bh.ceil().max(1.0));
+        let dx = pad - min.x + (w - bw) / 2.0;
+        let dy = pad - min.y + (h - bh) / 2.0;
+        let mv = |p: PointF64| PointF64 { x: p.x + dx, y: p.y + dy };
+        for shape in &mut doc.shapes {
+            for sub in &mut shape.path.subpaths {
+                for cmd in &mut sub.commands {
+                    *cmd = match *cmd {
+                        PathCmd::MoveTo(p) => PathCmd::MoveTo(mv(p)),
+                        PathCmd::LineTo(p) => PathCmd::LineTo(mv(p)),
+                        PathCmd::CubicTo(a, b, c) => PathCmd::CubicTo(mv(a), mv(b), mv(c)),
+                        PathCmd::Close => PathCmd::Close,
+                    };
+                }
+            }
+        }
+        doc.width = w as u32;
+        doc.height = h as u32;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +313,32 @@ mod tests {
         assert_eq!(cmds[1], PathCmd::LineTo(pt(2.0, 0.0)));
         assert_eq!(cmds[2], PathCmd::LineTo(pt(2.0, 5.0)));
         assert_eq!(cmds[3], PathCmd::Close);
+    }
+
+    #[test]
+    fn crop_fits_the_canvas_to_the_drawing() {
+        let mut doc = doc_with(vec![
+            PathCmd::MoveTo(pt(30.0, 40.0)),
+            PathCmd::LineTo(pt(50.0, 40.0)),
+            PathCmd::LineTo(pt(50.0, 60.0)),
+            PathCmd::Close,
+        ]);
+        CropPass { padding: 2.0 }.run(&mut doc);
+        assert_eq!((doc.width, doc.height), (24, 24));
+        assert_eq!(bounds(&doc), Some((pt(2.0, 2.0), pt(22.0, 22.0))));
+    }
+
+    #[test]
+    fn crop_counts_a_curve_by_its_bulge_not_its_endpoints() {
+        // Endpoints at y=50; the curve bulges up to y=35 (control points y=30).
+        let mut doc = doc_with(vec![
+            PathCmd::MoveTo(pt(10.0, 50.0)),
+            PathCmd::CubicTo(pt(10.0, 30.0), pt(30.0, 30.0), pt(30.0, 50.0)),
+            PathCmd::Close,
+        ]);
+        let (min, max) = bounds(&doc).unwrap();
+        assert!((min.y - 35.0).abs() < 1e-9 && (max.y - 50.0).abs() < 1e-9);
+        CropPass { padding: 0.0 }.run(&mut doc);
+        assert_eq!((doc.width, doc.height), (20, 15));
     }
 }

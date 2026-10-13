@@ -9,7 +9,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use visioncortex::{Color, ColorImage};
-use vtracer::{Clustering, Config, FitMode, Hierarchical, Preset};
+use vtracer::{Clustering, Config, FitMode, Hierarchical, Preset, Removal};
 
 /// Convert an image into vector graphics.
 #[derive(Parser, Debug)]
@@ -133,6 +133,43 @@ struct Args {
     /// source px (default 1.2, 0 = off). Crisp edges and corners are untouched.
     #[arg(long)]
     snap_smooth: Option<f64>,
+
+    /// Remove the region under this point, in source pixels: `X,Y`.
+    /// Repeatable.
+    #[arg(long, value_name = "X,Y")]
+    remove_at: Vec<String>,
+
+    /// Remove every region of the color under this point (also clears the
+    /// background where it shows through gaps, like inside an "O"): `X,Y`.
+    /// Repeatable.
+    #[arg(long, value_name = "X,Y")]
+    remove_color_at: Vec<String>,
+
+    /// Remove the background automatically: the color covering most of the
+    /// image border, wherever it touches the border.
+    #[arg(long)]
+    remove_background: bool,
+
+    /// Trim the canvas to the drawing, with optional padding in px
+    /// (`--crop` or `--crop=4`).
+    #[arg(long, value_name = "PADDING", num_args = 0..=1, default_missing_value = "0")]
+    crop: Option<f64>,
+}
+
+fn parse_point(s: &str, whole_color: bool) -> Result<Removal, String> {
+    let (x, y) = s
+        .split_once(',')
+        .ok_or_else(|| format!("`{s}` is not X,Y"))?;
+    let num = |v: &str| {
+        v.trim()
+            .parse::<f64>()
+            .map_err(|_| format!("`{s}` is not X,Y"))
+    };
+    Ok(Removal {
+        x: num(x)?,
+        y: num(y)?,
+        whole_color,
+    })
 }
 
 fn parse_simplify_tolerance(s: &str) -> Result<f64, String> {
@@ -244,6 +281,14 @@ fn build_config(args: &Args) -> Result<Config, String> {
     if let Some(v) = args.snap_smooth {
         config.snap_smooth = v;
     }
+    for s in &args.remove_at {
+        config.remove.push(parse_point(s, false)?);
+    }
+    for s in &args.remove_color_at {
+        config.remove.push(parse_point(s, true)?);
+    }
+    config.remove_background = args.remove_background;
+    config.crop = args.crop;
 
     // Palette: inline flag wins over file; both parse to a color list.
     if let Some(text) = &args.palette {
