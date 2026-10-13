@@ -11,10 +11,11 @@ Next: build it for real in the app, under the name **PixPath**.
 - Installed copies are on v0.2.0. Unreleased but committed: the Bounds
   overlay and the Centre button.
 
-## Open decisions (ask Barry first)
+## Decisions (settled 2026-10-13)
 
-1. Release v0.2.1 now (Centre + Bounds), or fold it into the first PixPath release?
-2. Has the name "PixPath" been checked for clashes? (The Λ logo stays.)
+1. **No v0.2.1.** The next release *is* the PixPath rebuild; don't polish the
+   old UI. Centre + Bounds ship as part of it.
+2. **The name PixPath is clear** (Barry checked). The Λ logo stays.
 
 ## Build stages
 
