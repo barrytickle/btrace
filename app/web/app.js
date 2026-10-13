@@ -271,8 +271,19 @@ window.addEventListener("paste", (e) => {
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 32;
 
+/// Keep at least this many px of the image on screen, so zooming or dragging
+/// can never lose it off the edge of the viewport.
+const KEEP_VISIBLE = 48;
+
 function layout() {
   const { stage, original } = ui;
+  const vr = ui.viewport.getBoundingClientRect();
+  const w = state.width * state.zoom;
+  const h = state.height * state.zoom;
+  const keepX = Math.min(KEEP_VISIBLE, w);
+  const keepY = Math.min(KEEP_VISIBLE, h);
+  state.panX = Math.min(vr.width - keepX, Math.max(keepX - w, state.panX));
+  state.panY = Math.min(vr.height - keepY, Math.max(keepY - h, state.panY));
   stage.style.left = `${state.panX}px`;
   stage.style.top = `${state.panY}px`;
   stage.style.width = `${state.width * state.zoom}px`;
@@ -299,17 +310,26 @@ function layout() {
   if (!state.loaded) stage.classList.remove("has-image");
 }
 
-function fit() {
+/// The zoom at which the whole image fits the window.
+function fitZoom() {
   const r = ui.viewport.getBoundingClientRect();
   const m = 48;
-  state.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min((r.width - m) / state.width, (r.height - m) / state.height)));
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min((r.width - m) / state.width, (r.height - m) / state.height)));
+}
+
+function fit() {
+  const r = ui.viewport.getBoundingClientRect();
+  state.zoom = fitZoom();
   state.panX = (r.width - state.width * state.zoom) / 2;
   state.panY = (r.height - state.height * state.zoom) / 2;
   layout();
 }
 
 function zoomAt(factor, cx, cy) {
-  const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, state.zoom * factor));
+  // Never zoom out past a quarter of the fit-to-window size: any further and
+  // a small image becomes a dot you can lose.
+  const min = Math.max(ZOOM_MIN, fitZoom() / 4);
+  const z = Math.min(ZOOM_MAX, Math.max(min, state.zoom * factor));
   const k = z / state.zoom;
   state.panX = cx - (cx - state.panX) * k;
   state.panY = cy - (cy - state.panY) * k;
@@ -332,6 +352,7 @@ ui.viewport.addEventListener("wheel", (e) => {
 ui.zoomIn.onclick = () => zoomCentre(1.25);
 ui.zoomOut.onclick = () => zoomCentre(0.8);
 ui.zoomLabel.onclick = () => state.loaded && fit();
+$("zoomFit").onclick = () => state.loaded && fit();
 window.addEventListener("resize", () => state.loaded && layout());
 
 // Pointer: pan, divider drag, or remove-click.

@@ -118,7 +118,8 @@ http://127.0.0.1:8765 and opens it.
 - **Fine-tune:** every setting, each with a plain-English explanation.
 - **Open:** button, drag and drop, or paste.
 - **View:** split (drag the divider), trace only, original only; scroll to
-  zoom, drag to pan. **Outlines** (toolbar toggle, O) draws every path edge
+  zoom, drag to pan, **Centre** (or 0) fits the image back in view; the image
+  can never be zoomed or dragged out of sight. **Outlines** (toolbar toggle, O) draws every path edge
   as a dashed guide; it is never part of the SVG. **Bounds** (B) frames the SVG's
   edge, hatches the empty space around the drawing and lists the margins in
   px; with "Trim empty space" on it shows the trimmed canvas instead.
