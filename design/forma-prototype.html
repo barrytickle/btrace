@@ -55,7 +55,7 @@ button { font: inherit; color: inherit; }
 .intro .jump button:hover { color: var(--ink); border-color: var(--ink-3); }
 
 /* ---- window ---- */
-.win { max-width: 1180px; margin: 0 auto; background: var(--win); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; display: grid; grid-template-rows: auto auto 1fr auto; min-height: 680px; }
+.win { max-width: 1180px; margin: 0 auto; background: var(--win); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; display: grid; grid-template-rows: auto auto auto 1fr auto; min-height: 680px; }
 .chrome { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .brand { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: -.01em; }
 .brand svg { width: 26px; height: 26px; }
@@ -271,6 +271,21 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 .quick .spacer { flex: 1; }
 .quick .btn { padding: 6px 12px; font-size: 13px; }
 
+/* batch bar */
+.batchbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--amber-soft); flex-wrap: wrap; }
+.batchbar[hidden] { display: none; }
+.bb-tag { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); border: 1.5px solid var(--amber); border-radius: 6px; padding: 1px 7px; }
+.bb-title { font-size: 14px; color: var(--ink); }
+.bb-thumbs { display: flex; gap: 4px; }
+.bb-th { position: relative; width: 30px; height: 30px; border-radius: 6px; background: var(--panel); border: 1.5px solid var(--line-2); overflow: hidden; opacity: .65; }
+.bb-th img { width: 100%; height: 100%; object-fit: contain; }
+.bb-th.cur { border-color: var(--accent); opacity: 1; box-shadow: 0 0 0 2px var(--accent-soft); }
+.bb-th.done { opacity: 1; }
+.bb-th i { position: absolute; right: 1px; bottom: 0; font-style: normal; font-size: 10px; font-weight: 700; color: var(--accent); background: var(--panel); border-radius: 4px; padding: 0 2px; line-height: 1.2; }
+.batchbar .spacer { flex: 1; }
+.batchbar .btn { padding: 5px 12px; font-size: 13px; }
+.mode.picked { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
 /* batch editing */
 .editing { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--amber-soft); color: var(--ink); font-size: 13.5px; }
 .editwith { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); flex-wrap: wrap; }
@@ -385,6 +400,7 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
     <span class="ver">v0.3.0</span>
   </div>
 
+  <div class="batchbar" id="batchbar" hidden></div>
   <div class="stepper" id="stepper" hidden></div>
 
   <div class="main">
@@ -560,7 +576,7 @@ const icon = {
 
 function picture({ split = true, hint = "", analysing = false, inline = false } = {}) {
   const after = uri(current());
-  const bounds = S.bounds || (S.trim && S.bg !== "keep") ? boundsOverlay() : "";
+  const bounds = (split || inline) && (S.bounds || (S.trim && S.bg !== "keep")) ? boundsOverlay() : "";
   const removing = inline && S.tool === "remove";
   const full = inline && (S.tool === "preview" || removing);
   const tools = inline ? `<div class="tools" role="toolbar" aria-label="Clean-up tools">
@@ -686,7 +702,7 @@ const screens = {
         <p>A few quick questions, each with PixPath's recommendation already picked and a live preview.</p></button>
       <button class="mode" data-act="advanced"><strong>Advanced</strong><span></span>
         <p>Every setting, each explained. For when you know exactly what you want.</p></button>`;
-    foot.innerHTML = `<button class="btn" data-act="start">← Back</button><div class="spacer"></div><span class="note">PixPath remembers your choice for next time.</span>`;
+    foot.innerHTML = `<button class="btn" data-act="start">← ${S.batchCtx ? "Back to batch" : "Back"}</button><div class="spacer"></div><span class="note">PixPath remembers your choice for next time.</span>`;
   },
 
   auto() {
@@ -825,9 +841,15 @@ const screens = {
     foot.innerHTML = `<button class="btn" data-act="reviewBack">← Back</button>
       <button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} empty space</button>
       <div class="spacer"></div>
-      ${S.editing != null
-        ? `<button class="btn" data-act="cancelEdit">Cancel</button><button class="btn primary" data-act="finishEdit">Done · back to batch</button>`
-        : `<button class="btn" data-act="toast:SVG code copied, ready to paste">Copy SVG</button><button class="btn primary" data-act="save">Save SVG</button>`}`;
+      ${S.batchCtx?.mode === "same"
+        ? `<button class="btn primary" data-act="applyAll">Apply to all ${S.items.length} →</button>`
+        : S.batchCtx?.mode === "each"
+          ? S.editing + 1 < S.items.length
+            ? `<button class="btn primary" data-act="nextImage">Next image (${S.editing + 2} of ${S.items.length}) →</button>`
+            : `<button class="btn primary" data-act="nextImage">Finish · review the batch →</button>`
+          : S.editing != null
+            ? `<button class="btn primary" data-act="finishEdit">Done · back to batch</button>`
+            : `<button class="btn" data-act="toast:SVG code copied, ready to paste">Copy SVG</button><button class="btn primary" data-act="save">Save SVG</button>`}`;
   },
 
   advanced() {
@@ -872,12 +894,13 @@ const screens = {
       </div>`;
     panel.innerHTML = `<h2>Batch: 6 images</h2>
       <p class="sub">You dropped several images, so PixPath made a batch.</p>
-      <button class="mode" data-act="toast:Every image gets its own recommendations, applied automatically"><strong>Fully automatic</strong><span class="rec">Selected</span>
-        <p>Each image is analysed on its own: background, trimming and colours are decided per image.</p></button>
-      <button class="mode" data-act="toast:The guided questions are asked once and applied to all six"><strong>Same answers for all</strong><span></span>
-        <p>Answer the guided questions once; they apply to every image.</p></button>
-      <div class="tip">${icon.bulb}<span>When tracing finishes you'll review them all together before anything is saved.</span></div>`;
-    foot.innerHTML = `<button class="btn" data-act="start">← Back</button><div class="spacer"></div><button class="btn primary" data-act="breview" ${S.batchDone < 6 ? "disabled" : ""}>${S.batchDone < 6 ? `Tracing ${S.batchDone + 1} of 6…` : "Review all 6 →"}</button>`;
+      ${[
+        ["auto", "Fully automatic", "Each image gets its own recommendations: background, trimming and colours decided per image."],
+        ["same", "Same settings for all", "Answer the guided questions once; they apply to every image."],
+        ["each", "One by one", "Go through every image yourself, the same way as a single upload."],
+      ].map(([k, t, d]) => `<button class="mode${S.batchMode === k ? " picked" : ""}" data-act="batchMode:${k}"><strong>${t}</strong>${k === "auto" ? `<span class="rec">Recommended</span>` : "<span></span>"}<p>${d}</p></button>`).join("")}
+      <div class="tip">${icon.bulb}<span>Whichever you pick, you'll review all six together at the end before anything is saved.</span></div>`;
+    foot.innerHTML = `<button class="btn" data-act="start">← Back</button><div class="spacer"></div><button class="btn primary" data-act="batchGo" ${S.batchDone < 6 ? "disabled" : ""}>${S.batchDone < 6 ? `Tracing ${S.batchDone + 1} of 6…` : { auto: "Review all 6 →", same: "Choose settings for all 6 →", each: "Start with image 1 of 6 →" }[S.batchMode]}</button>`;
     if (S.batchDone < 6) {
       clearTimeout(S.batchTimer);
       S.batchTimer = setTimeout(() => { S.batchDone++; if (S.screen === "batch") render(); }, 650);
@@ -923,11 +946,7 @@ const screens = {
                 <button class="btn" data-item-act="trim" data-i="${i}" ${it.keepBg ? "disabled" : ""}>${it.trim ? "Undo trim" : "Trim"}</button>
                 <button class="btn" data-item-act="include" data-i="${i}">${it.include ? "Skip this one" : "Include it"}</button>
                 <span class="spacer"></span>
-                <span class="editwith">Edit with
-                  <button class="btn" data-item-act="edit-wizard" data-i="${i}">Guided</button>
-                  <button class="btn" data-item-act="edit-advanced" data-i="${i}">Advanced</button>
-                  <button class="btn" data-item-act="edit-review" data-i="${i}">Review</button>
-                </span>
+                <button class="btn primary" data-item-act="edit" data-i="${i}">Edit this image →</button>
               </div>
             </div>
           </details>`;
@@ -957,11 +976,33 @@ const screens = {
 --------------------------------------------------------------------------- */
 function render() {
   screens[S.screen]();
-  // While editing one image of a batch, say so on every screen of the flow.
-  if (S.editing != null && ["wizard", "advanced", "review"].includes(S.screen)) {
-    const it = S.items[S.editing];
-    panel.insertAdjacentHTML("afterbegin", `<div class="editing"><span>Editing <b>${it.name}</b> from your batch (${S.editing + 1} of ${S.items.length})</span><button class="link" data-act="cancelEdit">Cancel</button></div>`);
-  }
+  drawBatchBar();
+}
+
+/* While working inside a batch, a bar under the menu says so on every
+   screen: which image (or "all"), progress through the batch, and the way
+   back. PixPath never treats a batch image as a single upload. */
+function drawBatchBar() {
+  const bar = $("#batchbar");
+  const inside = S.batchCtx && (S.editing != null || S.batchCtx.mode === "same") && ["mode", "auto", "wizard", "advanced", "review"].includes(S.screen);
+  bar.hidden = !inside;
+  if (!inside) return;
+  const its = S.items;
+  const all = S.batchCtx.mode === "same";
+  const it = all ? null : its[S.editing];
+  const title = all
+    ? `Settings for all <b>${its.length} images</b>`
+    : `Editing image <b>${S.editing + 1} of ${its.length}</b> · ${it.name}`;
+  bar.innerHTML = `
+    <span class="bb-tag">Batch</span>
+    <span class="bb-title">${title}</span>
+    <span class="bb-thumbs" aria-label="Images in this batch">${its.map((x, i) => {
+      const cls = all ? "cur" : i === S.editing ? "cur" : x.done ? "done" : "";
+      return `<span class="bb-th ${cls}" title="${x.name}"><img src="${uri(itemTrace(x))}" alt="">${x.done && !all && i !== S.editing ? "<i>✓</i>" : ""}</span>`;
+    }).join("")}</span>
+    <span class="spacer"></span>
+    ${S.batchCtx.mode === "each" ? `<button class="link" data-act="restAuto">Use automatic for the rest</button>` : ""}
+    <button class="btn" data-act="cancelEdit">Back to batch</button>`;
 }
 
 /* Batch editing: load one image's settings into the normal flow, and write
@@ -985,8 +1026,8 @@ function startEdit(i, where) {
   });
   makeRaster(() => go(where), it);
 }
-function finishEdit() {
-  const it = S.items[S.editing];
+/// Write the current settings into batch image `i`.
+function saveInto(it) {
   Object.assign(it, {
     mono: S.type === "bw",
     keepBg: S.bg === "keep",
@@ -996,12 +1037,35 @@ function finishEdit() {
     removed: new Set(S.removed),
     flag: null,
     edited: true,
+    done: true,
   });
+}
+function finishEdit() {
+  const it = S.items[S.editing];
+  saveInto(it);
   toast(`Saved your changes to ${it.name}`);
+  endEdit();
+}
+function nextImage() {
+  saveInto(S.items[S.editing]);
+  const next = S.editing + 1;
+  if (next >= S.items.length) { toast("All 6 done. Review the batch before saving"); endEdit(); return; }
+  startEdit(next, "mode");
+}
+function applyToAll() {
+  const proto = { ...S };
+  S.items.forEach((it) => {
+    S.editing = S.items.indexOf(it);
+    saveInto(it);
+    it.removed = new Set(SPECKS);  // removals are per image; stray specks go everywhere
+  });
+  Object.assign(S, { type: proto.type });
+  toast(`Applied your settings to all ${S.items.length} images`);
   endEdit();
 }
 function endEdit() {
   S.editing = null;
+  S.batchCtx = null;
   makeRaster(() => { S.screen = "breview"; render(); });
 }
 function removeShapes(ids) {
@@ -1016,7 +1080,7 @@ function removeShapes(ids) {
 function go(screen) {
   S.screen = screen;
   if (screen === "wizard") S.step = S.step || 1;
-  if (screen === "batch") { S.batchDone = 0; S.items = makeBatch(); }
+  if (screen === "batch") { S.batchDone = 0; S.items = makeBatch(); S.batchMode ??= "auto"; }
   render();
   document.getElementById("win").scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
@@ -1060,7 +1124,7 @@ document.addEventListener("click", (e) => {
     else if (a === "bg") { it.keepBg = !it.keepBg; it.trim = !it.keepBg; }
     else if (a === "trim") it.trim = !it.trim;
     else if (a === "include") { it.include = !it.include; if (!it.include) it.open = false; }
-    else if (a.startsWith("edit-")) { startEdit(+ia.dataset.i, a.slice(5)); return; }
+    else if (a === "edit") { S.batchCtx = { mode: "edit" }; startEdit(+ia.dataset.i, "mode"); return; }
     render(); return;
   }
   const tool = e.target.closest("[data-tool]");
@@ -1122,12 +1186,21 @@ document.addEventListener("click", (e) => {
   const a = act.dataset.act;
   if (a.startsWith("toast:")) return toast(a.slice(6));
   if (a.startsWith("dlg:")) return openDialog(a.slice(4));
+  if (a.startsWith("batchMode:")) { S.batchMode = a.slice(10); render(); return; }
   ({
     open: openImage,
     paste: openImage,
     batch: () => go("batch"),
-    start: () => go("start"),
-    mode: () => (S.editing != null ? endEdit() : go("mode")),
+    start: () => (S.batchCtx ? endEdit() : go("start")),
+    batchGo: () => {
+      if (S.batchMode === "auto") { S.bFilter = "all"; go("breview"); }
+      else if (S.batchMode === "same") { S.batchCtx = { mode: "same" }; S.editing = null; Object.assign(S, { step: 1, from: "wizard" }); go("wizard"); }
+      else { S.batchCtx = { mode: "each" }; startEdit(0, "mode"); }
+    },
+    nextImage: () => nextImage(),
+    applyAll: () => applyToAll(),
+    restAuto: () => { saveInto(S.items[S.editing]); toast("The rest keep their automatic settings"); endEdit(); },
+    mode: () => go("mode"),
     cancelEdit: () => { toast("No changes saved"); endEdit(); },
     finishEdit: () => finishEdit(),
     auto: () => { Object.assign(S, RECOMMENDED, { autoUndo: {}, removed: new Set(SPECKS), removedStack: [] }); go("auto"); },
