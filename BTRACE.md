@@ -172,6 +172,24 @@ elease.ps1 0.2.0`
 - `experiments/`: Python prototypes that ideas were tested in before being
   ported to Rust.
 
+## Next up (agreed 2026-10-13)
+
+1. **Menu bar** (in-app, so browser and desktop match): File (Open, Open
+   folder, Recent, Save SVG, Save all), Edit (Undo/Redo, including settings),
+   View (split / trace / original, outlines, zoom), Help (Check for updates,
+   What's new, Keyboard shortcuts, Report a problem, About Btrace).
+2. **Btrace's own look**, not a VTracer lookalike: design 2-3 directions as
+   clickable mock-ups, pick one, then build it (brand colours and type, light
+   theme, start screen, trace-reveal animation, result-first layout).
+3. **Guided as a real wizard**, in the spirit of Vector Magic's flow (our own
+   design and words): one step at a time with Back / Next (image type,
+   quality, background, colours, review, save), and live previews of *your*
+   image for each choice, e.g. 3 / 4 / 5 colours side by side.
+
+Parked ideas: palette editing, PNG / PDF / EPS / DXF export, copy SVG to
+clipboard, saved presets, a native multi-core engine in the desktop app, a
+Mac build.
+
 ## Roadmap
 
 - Smooth gradients across whole areas (shading, not just glowing edges).
