@@ -1,4 +1,4 @@
-<title>forma Prototype</title>
+<title>PixPath Prototype</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
@@ -14,7 +14,7 @@
   --ink: #15211f;
   --ink-2: #4c5d59;
   --ink-3: #82918d;
-  --accent: #10a98d;      /* forma green */
+  --accent: #10a98d;      /* PixPath green */
   --accent-ink: #ffffff;
   --accent-soft: #dff4ee;
   --amber: #c98a12;
@@ -180,7 +180,7 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatches i { width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(0,0,0,.08); }
 
-/* "What forma did" */
+/* "what PixPath did" */
 .did { display: grid; gap: 8px; }
 .did .row { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
 .did .row.off { opacity: .55; }
@@ -227,11 +227,41 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
   .dropzone .big { font-size: 21px; }
   .foot .note { display: none; }
 }
+/* review */
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.fact { background: var(--sunk); border-radius: 10px; padding: 8px 10px; }
+.fact b { display: block; font: 600 16px var(--mono); }
+.fact small { color: var(--ink-3); font-size: 12px; }
+
+/* dialogs */
+.modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(13, 20, 19, .45); }
+.modal[hidden] { display: none; }
+.dlg { width: min(100%, 460px); max-height: calc(100% - 32px); overflow: auto; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); display: grid; }
+.dlg header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
+.dlg header h3 { margin: 0; font-family: var(--display); font-size: 19px; flex: 1; }
+.dlg header .x { border: 0; background: none; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 20px; color: var(--ink-2); }
+.dlg header .x:hover { background: var(--sunk); }
+.dlg .body { padding: 0 16px 14px; display: grid; gap: 12px; color: var(--ink-2); font-size: 14px; }
+.dlg .body p { margin: 0; }
+.dlg .body ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.dlg .body table { border-collapse: collapse; width: 100%; }
+.dlg .body td { padding: 5px 0; border-bottom: 1px solid var(--line); }
+.dlg .body td:last-child { text-align: right; }
+.dlg kbd { font: 12px var(--mono); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink); background: var(--sunk); }
+.dlg footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.dlg textarea { width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 10px; font: 14px var(--body); background: var(--win); color: var(--ink); }
+.about-mark { display: flex; align-items: center; gap: 12px; }
+.about-mark svg { width: 48px; height: 48px; }
+.about-mark b { font-family: var(--display); font-size: 22px; color: var(--ink); display: block; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line-2); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 480px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
 <div class="intro">
-  <strong>forma, clickable prototype</strong>
+  <strong>PixPath, clickable prototype</strong>
   <span>Images are simulated; nothing is really traced. Click through as a user would.</span>
   <div class="jump" aria-label="Jump to screen">
     <button data-go="start">Start</button>
@@ -247,7 +277,7 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
   <div class="chrome">
     <div class="brand">
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="var(--accent)"/><path d="M8 23 L16 9 L24 23" fill="none" stroke="var(--accent-ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><circle cx="16" cy="9" r="2.6" fill="var(--accent-ink)"/></svg>
-      forma
+      PixPath
     </div>
     <nav class="menus" aria-label="Menu">
       <div><button>File</button><div class="drop">
@@ -272,15 +302,15 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
         <button data-act="theme">Switch light / dark</button>
       </div></div>
       <div><button>Help</button><div class="drop">
-        <button data-act="update">Check for updates</button>
-        <button data-act="toast:What's new: release notes from GitHub">What's new in 0.3.0</button>
-        <button data-act="toast:Keyboard shortcuts sheet">Keyboard shortcuts <kbd>?</kbd></button>
-        <hr><button data-act="toast:Opens a pre-filled GitHub issue">Report a problem</button>
-        <button data-act="toast:forma 0.3.0 · based on visioncortex VTracer (MIT)">About forma</button>
+        <button data-act="dlg:update">Check for updates</button>
+        <button data-act="dlg:whatsnew">What's new in 0.3.0</button>
+        <button data-act="dlg:shortcuts">Keyboard shortcuts <kbd>?</kbd></button>
+        <hr><button data-act="dlg:report">Report a problem</button>
+        <button data-act="dlg:about">About PixPath</button>
       </div></div>
     </nav>
     <div class="spacer"></div>
-    <div class="update" id="update">forma 0.3.1 is ready <button class="btn primary" style="padding:3px 10px;font-size:13px" data-act="toast:Downloading and restarting…">Install &amp; restart</button></div>
+    <div class="update" id="update">PixPath 0.3.1 is ready <button class="btn primary" style="padding:3px 10px;font-size:13px" data-act="toast:Downloading and restarting…">Install &amp; restart</button></div>
     <span class="ver">v0.3.0</span>
   </div>
 
@@ -295,10 +325,11 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+<div class="modal" id="modal" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle" id="dlg"></div></div>
 
 <script>
 /* ---------------------------------------------------------------------------
-   Sample artwork: forma's own "Summit" badge, drawn here so the prototype
+   Sample artwork: PixPath's own "Summit" badge, drawn here so the prototype
    needs no third-party images. Variants stand in for real traces.
 --------------------------------------------------------------------------- */
 const C = { navy: "#1d2b53", teal: "#19a594", orange: "#f28c28", cream: "#f5e9d4", white: "#ffffff" };
@@ -384,7 +415,7 @@ function picture({ split = true, hint = "", analysing = false } = {}) {
       <img src="${rasterURL}" alt="Original image" style="image-rendering:auto">
       ${split ? `<img class="after" src="${after}" alt="Traced vector">
       <div class="split" aria-hidden="true"></div>
-      <span class="tag l">Original PNG</span><span class="tag r">forma SVG</span>` : ""}
+      <span class="tag l">Original PNG</span><span class="tag r">PixPath SVG</span>` : ""}
       ${bounds}
       ${hint ? `<span class="hint">${hint}</span>` : ""}
       ${analysing ? `<div class="analysing">Analysing your image…</div>` : ""}
@@ -434,6 +465,16 @@ function edgeArt(kind) {
 --------------------------------------------------------------------------- */
 const stage = $("#stage"), panel = $("#panel"), foot = $("#foot"), stepper = $("#stepper");
 
+function drawStepper(active) {
+  const steps = ["Image type", "Background", "Colours", "Details", "Review"];
+  stepper.hidden = false;
+  stepper.innerHTML = steps.map((s, i) => {
+    const n = i + 1;
+    const cls = n === active ? "on" : n < active ? "done" : "";
+    return `${i ? `<span class="sep"></span>` : ""}<button class="st ${cls}" data-step="${n}"><span class="n">${n < active ? "✓" : n}</span>${s}</button>`;
+  }).join("");
+}
+
 const screens = {
   start() {
     stepper.hidden = true;
@@ -458,7 +499,7 @@ const screens = {
         <button data-act="open">shop-icons <em>folder · 12 images · yesterday</em></button>
         <button data-act="open">stamp-scan.jpg <em>3 days ago</em></button>
       </div>`;
-    foot.innerHTML = `<span class="note">Tip: you can also paste a screenshot straight in.</span><div class="spacer"></div><button class="btn ghost" data-act="update">Check for updates</button>`;
+    foot.innerHTML = `<span class="note">Tip: you can also paste a screenshot straight in.</span><div class="spacer"></div><button class="btn ghost" data-act="dlg:update">Check for updates</button>`;
   },
 
   mode() {
@@ -466,7 +507,7 @@ const screens = {
     stage.innerHTML = picture({ split: false, analysing: S.analysing });
     panel.innerHTML = `<h2>How would you like to trace it?</h2>
       <div>
-        <div class="eyebrow" style="margin-bottom:8px">What forma noticed</div>
+        <div class="eyebrow" style="margin-bottom:8px">What PixPath noticed</div>
         <div class="findings">
           <span class="chip"><b>Logo</b> with smooth edges</span>
           <span class="chip"><b>5</b> colours</span>
@@ -476,12 +517,12 @@ const screens = {
         </div>
       </div>
       <button class="mode" data-act="auto"><strong>Fully automatic</strong><span class="rec">Recommended</span>
-        <p>forma applies everything it noticed and shows you what it did. Every decision can be undone.</p></button>
+        <p>PixPath applies everything it noticed and shows you what it did. Every decision can be undone.</p></button>
       <button class="mode" data-act="wizard"><strong>Guided</strong><span></span>
-        <p>A few quick questions, each with forma's recommendation already picked and a live preview.</p></button>
+        <p>A few quick questions, each with PixPath's recommendation already picked and a live preview.</p></button>
       <button class="mode" data-act="advanced"><strong>Advanced</strong><span></span>
         <p>Every setting, each explained. For when you know exactly what you want.</p></button>`;
-    foot.innerHTML = `<button class="btn" data-act="start">← Back</button><div class="spacer"></div><span class="note">forma remembers your choice for next time.</span>`;
+    foot.innerHTML = `<button class="btn" data-act="start">← Back</button><div class="spacer"></div><span class="note">PixPath remembers your choice for next time.</span>`;
   },
 
   auto() {
@@ -494,7 +535,7 @@ const screens = {
       { k: "colours", label: "Kept 4 colours", why: "Each is clearly distinct", swatches: [C.navy, C.teal, C.orange, C.cream] },
       { k: "lines", label: "Straightened 3 edges", why: "The base bar and the mountain sides" },
     ];
-    panel.innerHTML = `<h2>Done. Here's what forma did</h2>
+    panel.innerHTML = `<h2>Done. Here's what PixPath did</h2>
       <p class="sub">Undo anything that isn't right; the picture updates straight away.</p>
       <div class="did">${rows.map((r) => {
         const off = S.autoUndo[r.k];
@@ -505,17 +546,12 @@ const screens = {
         </div>`;
       }).join("")}</div>
       <div class="tip">${icon.bulb}<span>Want a say in each step? <button class="link" data-act="wizard">Walk through it guided</button> or <button class="link" data-act="advanced">open Advanced</button>.</span></div>`;
-    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div><button class="btn primary" data-act="save">Save SVG</button>`;
+    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div><button class="btn primary" data-act="review">Review →</button>`;
   },
 
   wizard() {
-    const steps = ["Image type", "Background", "Colours", "Details", "Review"];
-    stepper.hidden = false;
-    stepper.innerHTML = steps.map((s, i) => {
-      const n = i + 1;
-      const cls = n === S.step ? "on" : n < S.step ? "done" : "";
-      return `${i ? `<span class="sep"></span>` : ""}<button class="st ${cls}" data-step="${n}"><span class="n">${n < S.step ? "✓" : n}</span>${s}</button>`;
-    }).join("");
+    if (S.step === 5) { S.from = "wizard"; S.screen = "review"; return screens.review(); }
+    drawStepper(S.step);
     stage.innerHTML = picture({ hint: "Live preview of your choices" });
     const why = (t) => `<div class="why">${icon.spark}<span>${t}</span></div>`;
     const body = {
@@ -549,22 +585,48 @@ const screens = {
         ${why("Found <b>3 straight edges</b>. No soft glows, so that question is skipped.")}
         <button class="toggle${S.lines ? " on" : ""}" data-toggle="lines"><span class="t"><strong>Straight lines &amp; sharp corners</strong><span>The base bar and mountain sides come out perfectly straight</span></span><span class="sw"></span></button>
         <div class="tip">${icon.bulb}<span>Questions only appear when they matter. A picture with a glowing moon would ask about glows here.</span></div>`,
-      5: () => `<h2>Looks good?</h2>
-        <p class="sub">Compare with the divider on the picture. Click anything there to remove it, or go back a step.</p>
-        <div class="did">
-          <div class="row"><span class="ok">✓</span><span><b>${{ logo: "Logo", illustration: "Illustration", detailed: "Photo / detailed", bw: "Black & white" }[S.type]}</b><small>Image type</small></span><button class="btn ghost" data-step="1">Change</button></div>
-          <div class="row"><span class="ok">✓</span><span><b>${{ keep: "Background kept", remove: "Background removed", click: "Picking parts by hand" }[S.bg]}${S.trim && S.bg !== "keep" ? ", trimmed" : ""}</b><small>Background</small></span><button class="btn ghost" data-step="2">Change</button></div>
-          <div class="row"><span class="ok">✓</span><span><b>${S.type === "bw" ? 2 : S.colours} colours</b><small>Colours</small></span><button class="btn ghost" data-step="3">Change</button></div>
-        </div>
-        <div class="tip">${icon.bulb}<span>Need something specific? <button class="link" data-act="advanced">Fine-tune in Advanced</button>; your answers carry over.</span></div>`,
     };
     panel.innerHTML = body[S.step]();
-    const last = S.step === 5;
     const nextName = ["", "Background", "Colours", "Details", "Review"][S.step];
     foot.innerHTML = `<button class="btn" data-act="${S.step === 1 ? "mode" : "prev"}">← Back</button>
       <button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button>
       <div class="spacer"></div>
-      ${last ? `<button class="btn primary" data-act="save">Save SVG</button>` : `<button class="btn primary" data-act="next">Continue to ${nextName.toLowerCase()} →</button>`}`;
+      <button class="btn primary" data-act="next">Continue to ${nextName.toLowerCase()} →</button>`;
+  },
+
+  // Every mode ends here: the result, every decision with a way back to
+  // change it, and the final numbers, before anything is saved.
+  review() {
+    if (S.from === "wizard") drawStepper(5); else stepper.hidden = true;
+    stage.innerHTML = picture({ hint: "Click any shape to remove it" });
+    const kept = S.bg === "keep";
+    const trimmed = S.trim && !kept;
+    const n = S.type === "bw" ? 2 : S.colours + (kept ? 1 : 0);
+    const size = trimmed ? "140 × 140" : "260 × 200";
+    const shapes = { 2: 4, 3: 5, 4: 6, 5: 7 }[n] ?? 6;
+    const kb = (1.2 + 0.25 * n + (S.lines ? 0 : 0.4)).toFixed(1);
+    const fromName = { auto: "Automatic", wizard: "Guided", advanced: "Advanced" }[S.from] ?? "Guided";
+    const row = (title, what, step) => `<div class="row"><span class="ok">✓</span><span><b>${title}</b><small>${what}</small></span><button class="btn ghost" data-change="${step}">Change</button></div>`;
+    panel.innerHTML = `<h2>Review</h2>
+      <p class="sub">Check the result before saving. Drag the divider to compare with your original.</p>
+      <div class="facts">
+        <div class="fact"><b>${size}</b><small>px canvas</small></div>
+        <div class="fact"><b>${n}</b><small>colours</small></div>
+        <div class="fact"><b>${shapes}</b><small>shapes</small></div>
+        <div class="fact"><b>${kb}</b><small>KB file</small></div>
+      </div>
+      <div class="did">
+        ${row({ logo: "Logo or icon", illustration: "Illustration", detailed: "Photo or detailed art", bw: "Black & white drawing" }[S.type], "Image type", 1)}
+        ${row(kept ? "Background kept" : S.bg === "click" ? "Parts removed by hand" : "Background removed", trimmed ? "Background · empty space trimmed" : "Background · not trimmed", 2)}
+        ${row(`${n} colours`, "Colours", 3)}
+        ${row(S.lines ? "Straight lines & sharp corners" : "Curves left as traced", "Details", 4)}
+      </div>
+      <div class="tip">${icon.bulb}<span>Made with ${fromName}. Need full control? <button class="link" data-act="advanced">Open Advanced</button>; everything you chose carries over.</span></div>`;
+    foot.innerHTML = `<button class="btn" data-act="reviewBack">← Back</button>
+      <button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} empty space</button>
+      <div class="spacer"></div>
+      <button class="btn" data-act="toast:SVG code copied, ready to paste">Copy SVG</button>
+      <button class="btn primary" data-act="save">Save SVG</button>`;
   },
 
   advanced() {
@@ -586,7 +648,7 @@ const screens = {
         <button class="toggle${S.trim ? " on" : ""}" data-toggle="trim"><span class="t"><strong>Trim empty space</strong><span>Fit the SVG to the drawing</span></span><span class="sw"></span></button>
         <button class="toggle${S.lines ? " on" : ""}" data-toggle="lines"><span class="t"><strong>Straight lines &amp; sharp corners</strong><span>Off for hand-drawn, organic shapes</span></span><span class="sw"></span></button>
       </div>`;
-    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div><button class="btn primary" data-act="save">Save SVG</button>`;
+    foot.innerHTML = `<button class="btn" data-act="mode">← Back</button><button class="btn ghost" data-act="bounds">${S.bounds ? "Hide" : "Show"} bounds</button><div class="spacer"></div><button class="btn primary" data-act="review">Review →</button>`;
   },
 
   batch() {
@@ -608,7 +670,7 @@ const screens = {
         }).join("")}
       </div>`;
     panel.innerHTML = `<h2>Batch: 6 images</h2>
-      <p class="sub">You dropped several images, so forma made a batch.</p>
+      <p class="sub">You dropped several images, so PixPath made a batch.</p>
       <button class="mode" data-act="toast:Every image gets its own recommendations, applied automatically"><strong>Fully automatic</strong><span class="rec">Selected</span>
         <p>Each image is analysed on its own: background, trimming and colours are decided per image.</p></button>
       <button class="mode" data-act="toast:The guided questions are asked once and applied to all six"><strong>Same answers for all</strong><span></span>
@@ -680,12 +742,24 @@ document.addEventListener("click", (e) => {
     render(); return;
   }
   const step = e.target.closest("[data-step]");
-  if (step && S.screen === "wizard") { S.step = +step.dataset.step; render(); return; }
+  if (step && (S.screen === "wizard" || S.screen === "review")) {
+    S.step = +step.dataset.step;
+    if (S.step === 5) { S.from = "wizard"; go("review"); } else go("wizard");
+    return;
+  }
+  const change = e.target.closest("[data-change]");
+  if (change) {
+    // Back to where that decision lives in the mode the user came from.
+    if (S.from === "wizard") { S.step = +change.dataset.change; go("wizard"); }
+    else go(S.from === "advanced" ? "advanced" : "auto");
+    return;
+  }
 
   const act = e.target.closest("[data-act]");
   if (!act) return;
   const a = act.dataset.act;
   if (a.startsWith("toast:")) return toast(a.slice(6));
+  if (a.startsWith("dlg:")) return openDialog(a.slice(4));
   ({
     open: openImage,
     paste: openImage,
@@ -695,11 +769,16 @@ document.addEventListener("click", (e) => {
     auto: () => { Object.assign(S, RECOMMENDED, { autoUndo: {} }); go("auto"); },
     wizard: () => { S.step = 1; go("wizard"); },
     advanced: () => go("advanced"),
-    next: () => { S.step = Math.min(5, S.step + 1); render(); },
+    next: () => {
+      S.step = Math.min(5, S.step + 1);
+      if (S.step === 5) { S.from = "wizard"; go("review"); } else render();
+    },
+    review: () => { S.from = S.screen; go("review"); },
+    reviewBack: () => { if (S.from === "wizard") { S.step = 4; go("wizard"); } else go(S.from); },
     prev: () => { S.step = Math.max(1, S.step - 1); render(); },
     save: () => toast(S.screen === "start" ? "Open an image first" : "Save as: summit-badge.svg"),
     bounds: () => { S.bounds = !S.bounds; render(); },
-    update: () => { $("#update").classList.add("show"); toast("forma 0.3.1 is available"); },
+    update: () => { $("#update").classList.add("show"); toast("PixPath 0.3.1 is available"); },
     theme: () => {
       const r = document.documentElement;
       const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -719,6 +798,90 @@ document.addEventListener("input", (e) => {
   }
   if (e.target.type === "range") e.target.previousElementSibling.querySelector("output").textContent = e.target.value;
 });
+
+/* ---------------------------------------------------------------------------
+   Help dialogs
+--------------------------------------------------------------------------- */
+const mark = `<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="var(--accent)"/><path d="M8 23 L16 9 L24 23" fill="none" stroke="var(--accent-ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><circle cx="16" cy="9" r="2.6" fill="var(--accent-ink)"/></svg>`;
+const dialogs = {
+  about: () => ({
+    title: "About PixPath",
+    body: `<div class="about-mark">${mark}<span><b>PixPath</b>Version 0.3.0</span></div>
+      <p>Turns images into clean SVG vectors: logos, icons, illustrations and line art.</p>
+      <p>Built on <b>visioncortex VTracer</b> (MIT / Apache-2.0), with PixPath's own palette snapping, glows, straight lines and background removal.</p>
+      <p>Source code: github.com/barrytickle/btrace</p>`,
+    buttons: `<button class="btn" data-act="dlg:update">Check for updates</button><button class="btn primary" data-close>Close</button>`,
+  }),
+  update: () => ({
+    title: "Check for updates",
+    body: `<div style="display:flex;align-items:center;gap:10px"><span class="spinner"></span><span>Checking for a newer version…</span></div>`,
+    buttons: `<button class="btn" data-close>Cancel</button>`,
+    after: () => setTimeout(() => {
+      if ($("#modal").hidden || $("#dlgTitle")?.textContent !== "Check for updates") return;
+      showDialog({
+        title: "PixPath 0.3.1 is available",
+        body: `<p>You have 0.3.0. The update is small and takes a few seconds.</p>
+          <div><div class="eyebrow" style="margin-bottom:6px">What's new in 0.3.1</div>
+          <ul><li>Review shows the final file size before you save</li><li>Faster batch tracing on large folders</li><li>Fixed: pasted screenshots sometimes opened rotated</li></ul></div>`,
+        buttons: `<button class="btn" data-close>Later</button><button class="btn primary" data-act="toast:Downloading 0.3.1 and restarting…" data-close>Install &amp; restart</button>`,
+      });
+      $("#update").classList.add("show");
+    }, 1200),
+  }),
+  whatsnew: () => ({
+    title: "What's new in 0.3.0",
+    body: `<ul>
+        <li><b>Fully automatic mode</b>: one click, then see what PixPath did and undo anything</li>
+        <li><b>Guided mode</b> recommends an answer at every step, with live previews</li>
+        <li><b>Review</b> before saving, in every mode</li>
+        <li><b>Batch</b>: drop several images or pick a folder</li>
+        <li>Empty-space view shows what trimming would remove</li>
+      </ul>`,
+    buttons: `<button class="btn primary" data-close>Close</button>`,
+  }),
+  shortcuts: () => ({
+    title: "Keyboard shortcuts",
+    body: `<table>
+        <tr><td>Open an image</td><td><kbd>Ctrl</kbd> <kbd>O</kbd></td></tr>
+        <tr><td>Paste an image</td><td><kbd>Ctrl</kbd> <kbd>V</kbd></td></tr>
+        <tr><td>Save SVG</td><td><kbd>Ctrl</kbd> <kbd>S</kbd></td></tr>
+        <tr><td>Undo / Redo</td><td><kbd>Ctrl</kbd> <kbd>Z</kbd> · <kbd>Ctrl</kbd> <kbd>Y</kbd></td></tr>
+        <tr><td>Remove tool</td><td><kbd>R</kbd></td></tr>
+        <tr><td>Cycle views</td><td><kbd>V</kbd></td></tr>
+        <tr><td>Outlines · Empty space</td><td><kbd>O</kbd> · <kbd>B</kbd></td></tr>
+        <tr><td>Fit to window · Zoom</td><td><kbd>0</kbd> · <kbd>+</kbd> <kbd>−</kbd></td></tr>
+      </table>`,
+    buttons: `<button class="btn primary" data-close>Close</button>`,
+  }),
+  report: () => ({
+    title: "Report a problem",
+    body: `<p>Tell us what happened. PixPath opens a GitHub issue with your version and settings filled in; your image is not uploaded.</p>
+      <label for="rp" class="eyebrow">What went wrong?</label>
+      <textarea id="rp" placeholder="e.g. The background wasn't removed from my logo"></textarea>`,
+    buttons: `<button class="btn" data-close>Cancel</button><button class="btn primary" data-act="toast:Opens GitHub with your report filled in" data-close>Open GitHub issue</button>`,
+  }),
+};
+
+function showDialog({ title, body, buttons }) {
+  $("#dlg").innerHTML = `<header><h3 id="dlgTitle">${title}</h3><button class="x" data-close aria-label="Close">×</button></header>
+    <div class="body">${body}</div><footer>${buttons}</footer>`;
+  $("#modal").hidden = false;
+  ($("#dlg footer .primary") ?? $("#dlg [data-close]"))?.focus();
+}
+function openDialog(kind) {
+  document.querySelectorAll(".menus > div").forEach((d) => d.classList.remove("open"));
+  const d = dialogs[kind]();
+  showDialog(d);
+  d.after?.();
+}
+function closeDialog() { $("#modal").hidden = true; }
+$("#modal").addEventListener("click", (e) => {
+  if (e.target.id === "modal" || e.target.closest("[data-close]")) {
+    // Let a button's own action (e.g. a toast) run before closing.
+    setTimeout(closeDialog, 0);
+  }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#modal").hidden) closeDialog(); });
 
 makeRaster(render);
 </script>
