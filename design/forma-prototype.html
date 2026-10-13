@@ -1090,9 +1090,15 @@ function applyToAll() {
   toast(`Applied your settings to all ${S.items.length} images`);
   endEdit();
 }
+/// Per-image state (colour edits, removals, trim) belongs to the image being
+/// edited; clear it so nothing carries over to the next image.
+function resetImageState() {
+  Object.assign(S, { recolor: {}, removed: new Set(), removedStack: [], trimBox: null, tool: "compare" });
+}
 function endEdit() {
   S.editing = null;
   S.batchCtx = null;
+  resetImageState();
   makeRaster(() => { S.screen = "breview"; render(); });
 }
 function removeShapes(ids) {
@@ -1119,6 +1125,11 @@ function toast(text) {
   toast.t = setTimeout(() => t.classList.remove("show"), 2400);
 }
 function openImage() {
+  // A fresh single upload: leave any batch, start from the image's own state.
+  S.editing = null;
+  S.batchCtx = null;
+  resetImageState();
+  makeRaster(() => {});
   S.analysing = true;
   go("mode");
   setTimeout(() => { S.analysing = false; if (S.screen === "mode") render(); }, 900);
@@ -1134,6 +1145,11 @@ document.addEventListener("click", (e) => {
     const s = go_.dataset.go;
     if (s === "wizard") S.step = 1;
     if (s === "breview") { S.items = makeBatch(); S.bFilter = "all"; }
+    // Jumping to a single-image screen leaves any batch edit behind.
+    if (["start", "mode", "auto", "wizard", "advanced"].includes(s) && (S.batchCtx || S.editing != null)) {
+      S.editing = null; S.batchCtx = null; resetImageState();
+      makeRaster(() => render());
+    }
     // Same defaults as choosing Fully automatic from "How would you like to trace it?"
     if (s === "auto") Object.assign(S, RECOMMENDED, { autoUndo: {}, removed: new Set(SPECKS), removedStack: [], trimBox: null });
     go(s);
