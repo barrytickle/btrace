@@ -101,6 +101,9 @@ pub struct Layer {
     pub paint: Paint,
     /// Pixel coverage of the region.
     pub mask: RegionMask,
+    /// Where a [`Paint::Blurred`] layer's halo may appear: a band around the
+    /// soft stretches of its edge. `None` = all round.
+    pub soft_zone: Option<RegionMask>,
 }
 
 /// Frontend output: ordered layers over a canvas, in paint order.
@@ -116,6 +119,29 @@ pub struct Segmentation {
 }
 
 impl Segmentation {
+    /// Index of the topmost layer covering each canvas pixel, row-major, or
+    /// `u32::MAX` where no layer does. This is what is *visible*: layers can
+    /// overlap (solid parents sit under their children).
+    pub fn topmost(&self) -> Vec<u32> {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let mut top = vec![u32::MAX; w * h];
+        for (i, layer) in self.layers.iter().enumerate() {
+            let m = &layer.mask;
+            for y in 0..m.height() {
+                for x in 0..m.width() {
+                    if !m.image.get_pixel(x, y) {
+                        continue;
+                    }
+                    let (cx, cy) = (x as i32 + m.offset.x, y as i32 + m.offset.y);
+                    if cx >= 0 && cy >= 0 && (cx as usize) < w && (cy as usize) < h {
+                        top[cy as usize * w + cx as usize] = i as u32;
+                    }
+                }
+            }
+        }
+        top
+    }
+
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             width,

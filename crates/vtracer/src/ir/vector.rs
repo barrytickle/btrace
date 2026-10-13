@@ -68,6 +68,17 @@ impl MultiPath {
 pub struct Shape {
     pub paint: Paint,
     pub path: MultiPath,
+    /// For a [`Paint::Blurred`] shape: where its halo may appear (a band
+    /// around its soft edges). `None` = all round.
+    pub soft_zone: Option<MultiPath>,
+}
+
+impl Shape {
+    /// The shape's outline and, if any, its soft zone: everything with
+    /// coordinates, for passes that move or round geometry.
+    pub fn paths_mut(&mut self) -> impl Iterator<Item = &mut MultiPath> {
+        std::iter::once(&mut self.path).chain(self.soft_zone.as_mut())
+    }
 }
 
 /// The output document IR: what the optimizer passes and the writer consume.
@@ -98,7 +109,7 @@ impl VectorDoc {
         let f = factor as f64;
         let s = |p: PointF64| PointF64 { x: p.x / f, y: p.y / f };
         for shape in &mut self.shapes {
-            for sub in &mut shape.path.subpaths {
+            for sub in shape.paths_mut().flat_map(|p| p.subpaths.iter_mut()) {
                 for cmd in &mut sub.commands {
                     *cmd = match *cmd {
                         PathCmd::MoveTo(p) => PathCmd::MoveTo(s(p)),

@@ -102,6 +102,11 @@ fn compose_stacked_with(
             doc.shapes.push(Shape {
                 paint: layer.paint,
                 path,
+                soft_zone: layer
+                    .soft_zone
+                    .as_ref()
+                    .map(|z| fit_region(fitter, z, passes, seg.scale))
+                    .filter(|z| !z.is_empty()),
             });
         }
         ctx.report(Phase::Compose, (i + 1) as f32 / total as f32);
@@ -122,6 +127,11 @@ pub fn compose_stacked(
             doc.shapes.push(Shape {
                 paint: layer.paint,
                 path,
+                soft_zone: layer
+                    .soft_zone
+                    .as_ref()
+                    .map(|z| fit_region(fitter, z, passes, seg.scale))
+                    .filter(|z| !z.is_empty()),
             });
         }
     }

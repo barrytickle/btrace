@@ -29,14 +29,20 @@
 //!
 //! The segmentation is at the upscaled size; [`Segmentation::scale`] records
 //! the factor and the pipeline maps the fitted geometry back to source pixels.
+//!
+//! With [`glow`](SnapFrontend::glow), a region whose visible edge is mostly
+//! soft (measured by the same edge-width test that drives smoothing) is
+//! painted with a matching Gaussian blur, so a glow traces as a glow rather
+//! than a hard disc.
 
 use std::collections::HashMap;
 
-use visioncortex::{Color, ColorImage};
+use visioncortex::{BinaryImage, Color, ColorImage, PointI32};
 
 use crate::colorfit::oklab::Oklab;
 use crate::error::Error;
-use crate::ir::{Paint, Segmentation};
+use crate::ir::{Paint, RegionMask, Segmentation};
+
 use crate::progress::Ctx;
 
 use super::{ColorClusterFrontend, Frontend};
@@ -77,6 +83,11 @@ pub struct SnapFrontend {
     /// their width and left alone, so sharp corners keep their points.
     /// 0 = off.
     pub smooth: f64,
+    /// Give regions whose visible edge is mostly soft a matching blur
+    /// ([`Paint::Blurred`]), so glows stay glows. Needs stacked compositing:
+    /// a blurred edge must fade over the layer beneath it, which cutout
+    /// mosaics punch out.
+    pub glow: bool,
 }
 
 impl Default for SnapFrontend {
@@ -87,6 +98,7 @@ impl Default for SnapFrontend {
             max_colors: 0,
             min_area: 16,
             smooth: 1.2,
+            glow: false,
         }
     }
 }
@@ -108,11 +120,22 @@ impl SnapFrontend {
     }
 
     fn snap_with_palette(&self, img: &ColorImage) -> Result<(ColorImage, u32, Vec<Color>), Error> {
+        self.snap_full(img).map(|(out, scale, palette, _)| (out, scale, palette))
+    }
+
+    /// Snap, also returning the source edge map (used for glow detection).
+    fn snap_full(
+        &self,
+        img: &ColorImage,
+    ) -> Result<(ColorImage, u32, Vec<Color>, Option<EdgeMap>), Error> {
         if img.width == 0 || img.height == 0 {
             return Err(Error::EmptyImage);
         }
+        let (w, h) = (img.width, img.height);
+        let mut src = premultiplied(img);
+        let edges = edge_map(&src, w, h);
         let palette = if self.palette.is_empty() {
-            detect_palette(img, self.max_colors)
+            detect_palette_where(img, self.max_colors, Some(&edges.soft))
         } else {
             self.palette.clone()
         };
@@ -120,13 +143,22 @@ impl SnapFrontend {
             // Fully transparent image: nothing to snap to.
             return Err(Error::EmptyImage);
         }
-        let scale = self.scale_for(img.width, img.height);
-        Ok((upscale_snap(img, scale as usize, &palette, self.smooth), scale, palette))
+        let scale = self.scale_for(w, h);
+        smooth_soft_edges(&mut src, w, h, self.smooth, &edges.soft);
+        let out = upscale_snap(&src, w, h, scale as usize, &palette);
+        Ok((out, scale, palette, Some(edges)))
     }
 
     /// Cluster a snapped image and pin every paint to its exact palette color
     /// (cluster means can drift by a unit in rounding).
-    fn finish(&self, mut seg: Segmentation, scale: u32, palette: &[Color]) -> Segmentation {
+    fn finish(
+        &self,
+        mut seg: Segmentation,
+        scale: u32,
+        palette: &[Color],
+        edges: Option<&EdgeMap>,
+        source: (usize, usize),
+    ) -> Segmentation {
         let rgb: Vec<[f32; 3]> = palette.iter().map(|c| [c.r as f32, c.g as f32, c.b as f32]).collect();
         for layer in &mut seg.layers {
             let c = layer.paint.color();
@@ -134,6 +166,9 @@ impl SnapFrontend {
             layer.paint = Paint::Solid(palette[i]);
         }
         seg.scale = scale;
+        if let (true, Some(edges)) = (self.glow, edges) {
+            assign_glow(&mut seg, edges, source);
+        }
         seg
     }
 
@@ -150,18 +185,18 @@ impl SnapFrontend {
 
 impl Frontend for SnapFrontend {
     fn segment(&self, img: &ColorImage) -> Result<Segmentation, Error> {
-        let (snapped, scale, palette) = self.snap_with_palette(img)?;
+        let (snapped, scale, palette, edges) = self.snap_full(img)?;
         let seg = self.inner(scale).segment_keyed(&snapped, has_transparency(&snapped))?;
-        Ok(self.finish(seg, scale, &palette))
+        Ok(self.finish(seg, scale, &palette, edges.as_ref(), (img.width, img.height)))
     }
 
     fn segment_with(&self, img: &ColorImage, ctx: &mut Ctx) -> Result<Segmentation, Error> {
-        let (snapped, scale, palette) = self.snap_with_palette(img)?;
+        let (snapped, scale, palette, edges) = self.snap_full(img)?;
         ctx.check()?;
         let seg = self
             .inner(scale)
             .segment_keyed_with(&snapped, has_transparency(&snapped), ctx)?;
-        Ok(self.finish(seg, scale, &palette))
+        Ok(self.finish(seg, scale, &palette, edges.as_ref(), (img.width, img.height)))
     }
 }
 
@@ -172,6 +207,14 @@ fn has_transparency(img: &ColorImage) -> bool {
 /// Detect the dominant flat colors of `img`, most common first. `max_colors`
 /// caps the result (0 = no cap).
 pub fn detect_palette(img: &ColorImage, max_colors: usize) -> Vec<Color> {
+    detect_palette_where(img, max_colors, None)
+}
+
+/// [`detect_palette`], also skipping pixels on soft edges (`soft` > 0.3).
+/// Inside a wide, smooth fade neighbouring pixels differ so little that they
+/// pass as flat, and the fade's in-between shades would become palette
+/// colors, slicing a glow into concentric bands.
+fn detect_palette_where(img: &ColorImage, max_colors: usize, soft: Option<&[f32]>) -> Vec<Color> {
     let (w, h) = (img.width, img.height);
     let px = |x: usize, y: usize| img.get_pixel(x, y);
     let lab: Vec<Oklab> = (0..w * h).map(|i| Oklab::from_color_toe(&px(i % w, i / w))).collect();
@@ -184,7 +227,7 @@ pub fn detect_palette(img: &ColorImage, max_colors: usize) -> Vec<Color> {
     for y in 0..h {
         for x in 0..w {
             let c = px(x, y);
-            if c.a < OPAQUE {
+            if c.a < OPAQUE || soft.is_some_and(|s| s[y * w + x] > 0.3) {
                 continue;
             }
             let here = &lab[y * w + x];
@@ -383,7 +426,25 @@ fn extremum_filter(v: &[f32], w: usize, h: usize, r: usize, max: bool) -> Vec<f3
 /// slope of its own), so it is measured at gradient peaks, mapped to
 /// softness, then spread across the ramp. Measured on small logos, crisp
 /// edges come out 2.0-2.5 px wide and a soft moon glow up to ~9.
+#[cfg(test)]
 fn softness(px: &[[f32; 4]], w: usize, h: usize) -> Vec<f32> {
+    edge_map(px, w, h).soft
+}
+
+/// Per-pixel edge measurements on the source image.
+struct EdgeMap {
+    /// Softness in [0, 1]; see [`edge_map`].
+    soft: Vec<f32>,
+    /// Width (px) of the soft edge at or right beside (3×3) each pixel; 0
+    /// elsewhere. Kept tight on purpose: a crisp edge a few pixels from a
+    /// glow must not inherit the glow's width.
+    width: Vec<f32>,
+}
+
+/// Softness and width of the edges around each pixel. Softness is 0 on and
+/// around crisp (anti-aliased) edges and in flat areas, rising to 1 across
+/// wide, soft ramps such as glows.
+fn edge_map(px: &[[f32; 4]], w: usize, h: usize) -> EdgeMap {
     let luma: Vec<f32> = px
         .iter()
         .map(|p| 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2])
@@ -413,6 +474,7 @@ fn softness(px: &[[f32; 4]], w: usize, h: usize) -> Vec<f32> {
     let grad_max = extremum_filter(&grad, w, h, 1, true);
 
     let mut soft = vec![0f32; w * h];
+    let mut widths = vec![0f32; w * h];
     for i in 0..w * h {
         let contrast = hi[i] - lo[i];
         let g = grad[i];
@@ -421,24 +483,227 @@ fn softness(px: &[[f32; 4]], w: usize, h: usize) -> Vec<f32> {
             let width = contrast / g;
             let t = ((width - CRISP_WIDTH) / (SOFT_WIDTH - CRISP_WIDTH)).clamp(0.0, 1.0);
             soft[i] = t * t * (3.0 - 2.0 * t);
+            if t > 0.0 {
+                widths[i] = width;
+            }
         }
     }
+    let width = extremum_filter(&widths, w, h, 1, true);
     let mut spread: Vec<[f32; 4]> = extremum_filter(&soft, w, h, SOFT_RADIUS, true)
         .into_iter()
         .map(|s| [s, 0.0, 0.0, 0.0])
         .collect();
     // Feather so the blend has no visible seam where softness starts.
     gaussian_blur(&mut spread, w, h, 1.0);
-    spread.into_iter().map(|s| s[0].clamp(0.0, 1.0)).collect()
+    EdgeMap {
+        soft: spread.into_iter().map(|s| s[0].clamp(0.0, 1.0)).collect(),
+        width,
+    }
+}
+
+/// Minimum soft edge (source px) for a region to glow.
+const GLOW_MIN_EDGE: usize = 12;
+/// Minimum median width (px) of a region's soft edge for it to glow: only
+/// clearly soft edges, not merely slightly blurry ones.
+const GLOW_MIN_WIDTH: f32 = SOFT_WIDTH;
+/// Minimum luma difference (0-255) between a glowing region and its
+/// backdrop. Width = contrast / slope is unreliable on faint edges (a little
+/// noise flattens a small step's slope), so faint "glows" are ignored; real
+/// glows are light against dark or the reverse.
+const GLOW_MIN_CONTRAST: f32 = EDGE_CONTRAST;
+/// Share of the visible edge above which the halo goes all round rather than
+/// just a zone around the soft stretches.
+const GLOW_WHOLE_SHARE: f64 = 0.9;
+
+/// Give regions with soft edges a glow: a halo matching the softness.
+///
+/// A region's edge counts only where it meets something *beneath* it (a
+/// lower layer, or nothing): where a layer above occludes it, that edge
+/// belongs to the occluder. Its soft stretches (by the edge map) set the
+/// halo: for a Gaussian-blurred step, contrast / steepest slope is
+/// σ·√(2π) ≈ 2.5σ, so σ = median soft width / 2.5. The halo's backdrop is
+/// the layer most often beneath those stretches.
+///
+/// The region itself stays crisp; the halo is drawn under it, only over its
+/// backdrop's color, and only within a *soft zone* (3σ around the soft
+/// stretches) unless the region is soft nearly all round. So a moon glows
+/// into the sky but never onto the silhouette or trees in front of it.
+fn assign_glow(seg: &mut Segmentation, edges: &EdgeMap, (sw, sh): (usize, usize)) {
+    let (w, h) = (seg.width as usize, seg.height as usize);
+    let scale = seg.scale.max(1) as usize;
+    let top = seg.topmost();
+    let mut glows: Vec<(usize, usize, u16)> = Vec::new();
+    for (i, layer) in seg.layers.iter_mut().enumerate() {
+        let i = i as u32;
+        let m = &layer.mask;
+        let mut total = 0usize;
+        let mut soft_px: Vec<usize> = Vec::new();
+        let mut soft_widths: Vec<f32> = Vec::new();
+        // Layers beneath the soft stretches, by count: the halo's backdrop.
+        let mut onto: HashMap<u32, usize> = HashMap::new();
+        for y in 0..m.height() {
+            for x in 0..m.width() {
+                if !m.image.get_pixel(x, y) {
+                    continue;
+                }
+                let (cx, cy) = (x as i64 + m.offset.x as i64, y as i64 + m.offset.y as i64);
+                // Skip the canvas border: the image edge is not an edge.
+                if cx <= 0 || cy <= 0 || cx >= w as i64 - 1 || cy >= h as i64 - 1 {
+                    continue;
+                }
+                if top[cy as usize * w + cx as usize] != i {
+                    continue;
+                }
+                // Visible edge pixel against something beneath (or nothing).
+                let beneath = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().find_map(|(dx, dy)| {
+                    let n = top[((cy + dy) as usize) * w + (cx + dx) as usize];
+                    (n == u32::MAX || n < i).then_some(n)
+                });
+                let Some(beneath) = beneath else { continue };
+                total += 1;
+                let (sx, sy) = ((cx as usize / scale).min(sw - 1), (cy as usize / scale).min(sh - 1));
+                let at = sy * sw + sx;
+                if edges.soft[at] > 0.5 && edges.width[at] >= GLOW_MIN_WIDTH {
+                    soft_px.push(at);
+                    soft_widths.push(edges.width[at]);
+                    *onto.entry(beneath).or_default() += 1;
+                }
+            }
+        }
+        if soft_widths.len() < GLOW_MIN_EDGE * scale {
+            continue;
+        }
+        soft_widths.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median = soft_widths[soft_widths.len() / 2];
+        if median < GLOW_MIN_WIDTH {
+            continue;
+        }
+        // The halo fades into whatever lies beneath the soft stretches; with
+        // nothing beneath (transparency) there is nothing to glow onto.
+        let Some((&under, _)) = onto.iter().max_by_key(|(_, n)| **n) else { continue };
+        if under == u32::MAX {
+            continue;
+        }
+        let sigma = (median as f64 / 2.5).clamp(0.3, 20.0);
+        glows.push((
+            i as usize,
+            under as usize,
+            (sigma * 100.0).round() as u16,
+        ));
+        if (soft_widths.len() as f64) < GLOW_WHOLE_SHARE * total as f64 {
+            let radius = (3.0 * sigma).ceil() as f32 + 1.0;
+            layer.soft_zone = soft_zone(&soft_px, sw, sh, radius, scale);
+        }
+    }
+    // Paints are set after the scan: `onto` reads the beneath layer's color.
+    let luma = |c: Color| 0.299 * c.r as f32 + 0.587 * c.g as f32 + 0.114 * c.b as f32;
+    for (i, under, blur) in glows {
+        let onto = seg.layers[under].paint.color();
+        let color = seg.layers[i].paint.color();
+        if (luma(color) - luma(onto)).abs() < GLOW_MIN_CONTRAST {
+            seg.layers[i].soft_zone = None;
+            continue;
+        }
+        seg.layers[i].paint = Paint::Blurred { color, blur, onto };
+    }
+}
+
+/// The band within `radius` source px of the `seeds` (source pixel indices),
+/// as a mask on the working canvas (`scale`× the source).
+fn soft_zone(seeds: &[usize], sw: usize, sh: usize, radius: f32, scale: usize) -> Option<RegionMask> {
+    let dist = chamfer_distance(seeds, sw, sh);
+    let inside = |i: usize| dist[i] <= radius;
+    let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
+    for y in 0..sh {
+        for x in 0..sw {
+            if inside(y * sw + x) {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x);
+                y1 = y1.max(y);
+            }
+        }
+    }
+    if x0 > x1 {
+        return None;
+    }
+    let (bw, bh) = ((x1 - x0 + 1) * scale, (y1 - y0 + 1) * scale);
+    let mut image = BinaryImage::new_w_h(bw, bh);
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            if !inside(y * sw + x) {
+                continue;
+            }
+            for dy in 0..scale {
+                for dx in 0..scale {
+                    image.set_pixel((x - x0) * scale + dx, (y - y0) * scale + dy, true);
+                }
+            }
+        }
+    }
+    let offset = PointI32 {
+        x: (x0 * scale) as i32,
+        y: (y0 * scale) as i32,
+    };
+    Some(RegionMask::new(image, offset))
+}
+
+/// Approximate Euclidean distance (px) from every pixel to the nearest seed:
+/// a two-pass 3-4 chamfer transform, O(pixels).
+fn chamfer_distance(seeds: &[usize], w: usize, h: usize) -> Vec<f32> {
+    const FAR: f32 = f32::MAX / 4.0;
+    let mut d = vec![FAR; w * h];
+    for &s in seeds {
+        d[s] = 0.0;
+    }
+    let (a, b) = (1.0f32, 1.4142f32);
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let mut v = d[i];
+            if x > 0 {
+                v = v.min(d[i - 1] + a);
+            }
+            if y > 0 {
+                v = v.min(d[i - w] + a);
+                if x > 0 {
+                    v = v.min(d[i - w - 1] + b);
+                }
+                if x + 1 < w {
+                    v = v.min(d[i - w + 1] + b);
+                }
+            }
+            d[i] = v;
+        }
+    }
+    for y in (0..h).rev() {
+        for x in (0..w).rev() {
+            let i = y * w + x;
+            let mut v = d[i];
+            if x + 1 < w {
+                v = v.min(d[i + 1] + a);
+            }
+            if y + 1 < h {
+                v = v.min(d[i + w] + a);
+                if x + 1 < w {
+                    v = v.min(d[i + w + 1] + b);
+                }
+                if x > 0 {
+                    v = v.min(d[i + w - 1] + b);
+                }
+            }
+            d[i] = v;
+        }
+    }
+    d
 }
 
 /// Smooth only the soft parts of `px`: blend towards a Gaussian blur by each
 /// pixel's [`softness`]. Crisp edges and their corners are left untouched.
-fn smooth_soft_edges(px: &mut [[f32; 4]], w: usize, h: usize, sigma: f64) {
+fn smooth_soft_edges(px: &mut [[f32; 4]], w: usize, h: usize, sigma: f64, soft: &[f32]) {
     if sigma <= 0.0 {
         return;
     }
-    let soft = softness(px, w, h);
     if soft.iter().all(|&s| s == 0.0) {
         return;
     }
@@ -452,24 +717,22 @@ fn smooth_soft_edges(px: &mut [[f32; 4]], w: usize, h: usize, sigma: f64) {
     }
 }
 
-/// Upscale `img` by `scale` with premultiplied Catmull–Rom, then snap every
-/// pixel to its nearest palette color (or full transparency). Soft edges are
-/// first smoothed with Gaussian sigma `smooth` (source pixels); see
-/// [`SnapFrontend::smooth`].
-fn upscale_snap(img: &ColorImage, scale: usize, palette: &[Color], smooth: f64) -> ColorImage {
-    let (w, h) = (img.width, img.height);
-    let (ow, oh) = (w * scale, h * scale);
-
-    // Premultiplied float source.
-    let mut src: Vec<[f32; 4]> = img
-        .pixels
+/// Premultiplied float RGBA (alpha 0-1), so interpolation and blurs do not
+/// darken edges next to transparent pixels.
+fn premultiplied(img: &ColorImage) -> Vec<[f32; 4]> {
+    img.pixels
         .chunks_exact(4)
         .map(|p| {
             let a = p[3] as f32 / 255.0;
             [p[0] as f32 * a, p[1] as f32 * a, p[2] as f32 * a, a]
         })
-        .collect();
-    smooth_soft_edges(&mut src, w, h, smooth);
+        .collect()
+}
+
+/// Upscale premultiplied `src` (`w`×`h`) by `scale` with Catmull–Rom, then
+/// snap every pixel to its nearest palette color (or full transparency).
+fn upscale_snap(src: &[[f32; 4]], w: usize, h: usize, scale: usize, palette: &[Color]) -> ColorImage {
+    let (ow, oh) = (w * scale, h * scale);
 
     // Horizontal pass: w*scale × h.
     let xt = axis_taps(w, scale);
@@ -676,6 +939,89 @@ mod tests {
         let glow = softness(&ramp(w, h, 8.0), w, h);
         assert!(mid(&crisp) < 0.05, "crisp edge softness {}", mid(&crisp));
         assert!(mid(&glow) > 0.9, "glow softness {}", mid(&glow));
+    }
+
+    /// A cream disc on teal whose edge is a Gaussian ramp of `sigma` px
+    /// (0 = anti-aliased crisp edge).
+    fn disc(sigma: f64) -> ColorImage {
+        let (n, r) = (64usize, 18.0f64);
+        let (bg, fg) = ([82.0, 191.0, 170.0], [240.0, 232.0, 214.0]);
+        let mut img = ColorImage::new_w_h(n, n);
+        for y in 0..n {
+            for x in 0..n {
+                let d = ((x as f64 + 0.5 - 32.0).powi(2) + (y as f64 + 0.5 - 32.0).powi(2)).sqrt() - r;
+                // Coverage of the disc: a smooth step of width ~sigma.
+                let s = sigma.max(0.35);
+                let t = 0.5 * (1.0 - erf(d / (s * std::f64::consts::SQRT_2)));
+                let c = |i: usize| (bg[i] + (fg[i] - bg[i]) * t).round() as u8;
+                img.set_pixel(x, y, &Color::new(c(0), c(1), c(2)));
+            }
+        }
+        img
+    }
+
+    /// Abramowitz–Stegun erf approximation (|error| < 1.5e-7).
+    fn erf(x: f64) -> f64 {
+        let t = 1.0 / (1.0 + 0.327_591_1 * x.abs());
+        let y = 1.0
+            - (((((1.061_405_429 * t - 1.453_152_027) * t) + 1.421_413_741) * t - 0.284_496_736) * t
+                + 0.254_829_592)
+                * t
+                * (-x * x).exp();
+        if x >= 0.0 { y } else { -y }
+    }
+
+    fn glows(img: &ColorImage) -> Vec<f64> {
+        let snap = SnapFrontend {
+            scale: 4,
+            glow: true,
+            ..SnapFrontend::default()
+        };
+        snap.segment(img)
+            .unwrap()
+            .layers
+            .iter()
+            .map(|l| l.paint.blur())
+            .filter(|b| *b > 0.0)
+            .collect()
+    }
+
+    #[test]
+    fn a_soft_disc_glows_with_about_its_own_blur() {
+        let blurs = glows(&disc(3.0));
+        assert_eq!(blurs.len(), 1, "expected one glowing region, got {blurs:?}");
+        assert!((2.0..=4.5).contains(&blurs[0]), "sigma {} not near 3", blurs[0]);
+    }
+
+    #[test]
+    fn a_half_soft_disc_glows_only_along_its_soft_side() {
+        // Left half of the disc's edge is a glow (sigma 3), right half crisp.
+        let soft = disc(3.0);
+        let mut img = disc(0.0);
+        for y in 0..img.height {
+            for x in 0..img.width / 2 {
+                img.set_pixel(x, y, &soft.get_pixel(x, y));
+            }
+        }
+        let snap = SnapFrontend {
+            scale: 4,
+            glow: true,
+            ..SnapFrontend::default()
+        };
+        let seg = snap.segment(&img).unwrap();
+        let glowing: Vec<_> = seg.layers.iter().filter(|l| l.paint.blur() > 0.0).collect();
+        assert_eq!(glowing.len(), 1);
+        let zone = glowing[0].soft_zone.as_ref().expect("a zone, not all round");
+        // The zone is a band of ~3 sigma + 1 (about 10 px) around the soft
+        // left half, which ends at the centre (x = 32). It must stop well
+        // short of the crisp right edge at x = 50.
+        let right_edge = (zone.offset.x as usize + zone.width()) / 4;
+        assert!(right_edge <= 44, "zone reaches x={right_edge}, into the crisp side");
+    }
+
+    #[test]
+    fn a_crisp_disc_does_not_glow() {
+        assert!(glows(&disc(0.0)).is_empty());
     }
 
     #[test]

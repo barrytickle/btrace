@@ -95,6 +95,7 @@ pub struct SegmentKey {
     snap_palette: Vec<[u8; 3]>,
     snap_max_colors: usize,
     snap_smooth: f64,
+    snap_glow: bool,
 }
 
 /// High-level converter configuration. [`Config::build`] turns this into a
@@ -157,6 +158,10 @@ pub struct Config {
     /// edges only, such as glows, so they snap to a clean edge instead of a
     /// grainy one. Crisp edges and corners are untouched. 0 = off.
     pub snap_smooth: f64,
+    /// Snap clustering: trace soft-edged regions (glows) with a matching blur
+    /// instead of a hard edge. Takes effect with stacked compositing only:
+    /// a blurred edge fades over the layer beneath, which cutout punches out.
+    pub snap_glow: bool,
     /// Regions to erase, picked by point in source pixels (a "remove
     /// background" click). Runs after clustering, so a [`Session`] applies
     /// clicks without re-segmenting.
@@ -200,6 +205,7 @@ impl Default for Config {
             watershed_detail: 128,
             snap_scale: 0,
             snap_smooth: 1.2,
+            snap_glow: false,
             remove: Vec::new(),
             remove_background: false,
             crop: None,
@@ -272,6 +278,7 @@ impl Config {
                 max_colors: self.max_colors.unwrap_or(0),
                 min_area: self.speckle_area(),
                 smooth: self.snap_smooth,
+                glow: self.glow_active(),
             }),
         }
     }
@@ -402,7 +409,14 @@ impl Config {
             snap_palette: self.snap(self.palette.iter().map(Color::rgb_u8).collect()),
             snap_max_colors: self.snap(self.max_colors.unwrap_or(0)),
             snap_smooth: self.snap(self.snap_smooth),
+            snap_glow: self.snap(self.glow_active()),
         }
+    }
+
+    /// Whether snap glow detection runs: requested, and compositing is
+    /// stacked (cutout punches out the layer a blurred edge fades over).
+    fn glow_active(&self) -> bool {
+        self.snap_glow && self.hierarchical == Hierarchical::Stacked
     }
 
     /// `value` when clustering is [`Clustering::Snap`], else its default.
@@ -434,6 +448,9 @@ impl Config {
                     Clustering::Watershed => {
                         (((255i64 - self.watershed_detail as i64) / 8).max(2)) as i32
                     }
+                    // Snap's palette colors are distinct by construction;
+                    // only identical paints may merge.
+                    Clustering::Snap => 0,
                     _ => self.layer_difference,
                 },
             },

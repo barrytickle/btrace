@@ -17,18 +17,30 @@ pub use vector::{MultiPath, PathCmd, Shape, SubPath, VectorDoc};
 
 use visioncortex::Color;
 
-/// The final appearance of a region. Only solid colors are supported today;
-/// the enum leaves room for gradients and patterns later.
+/// The final appearance of a region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Paint {
     Solid(Color),
+    /// A solid color that glows: drawn crisp, over a halo of itself that
+    /// fades into the `onto` color beneath it (glows, soft light). `blur` is
+    /// the halo's Gaussian standard deviation in hundredths of a source
+    /// pixel. The halo only ever appears over `onto`-colored shapes.
+    Blurred { color: Color, blur: u16, onto: Color },
 }
 
 impl Paint {
     /// The representative solid color of this paint.
     pub fn color(&self) -> Color {
         match self {
-            Paint::Solid(c) => *c,
+            Paint::Solid(c) | Paint::Blurred { color: c, .. } => *c,
+        }
+    }
+
+    /// Edge blur (standard deviation, source px), or 0 for a hard edge.
+    pub fn blur(&self) -> f64 {
+        match self {
+            Paint::Solid(_) => 0.0,
+            Paint::Blurred { blur, .. } => *blur as f64 / 100.0,
         }
     }
 }

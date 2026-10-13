@@ -21,7 +21,9 @@ fn flush(run: &mut Vec<Layer>, out: &mut Vec<Layer>) {
             let paint = run[0].paint;
             let masks: Vec<&RegionMask> = run.iter().map(|l| &l.mask).collect();
             let mask = RegionMask::union_all(&masks);
-            out.push(Layer { paint, mask });
+            let zones: Vec<&RegionMask> = run.iter().filter_map(|l| l.soft_zone.as_ref()).collect();
+            let soft_zone = (!zones.is_empty()).then(|| RegionMask::union_all(&zones));
+            out.push(Layer { paint, mask, soft_zone });
             run.clear();
         }
     }

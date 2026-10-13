@@ -37,6 +37,22 @@ points.
 
 Code: `crates/vtracer/src/frontend/snap.rs`.
 
+### Glows (`--snap-glow`, with `--hierarchical stacked`)
+
+Where a shape fades softly into what is behind it (a moon into the sky, a
+light), Btrace measures how soft that edge is and draws a matching **halo**:
+the shape stays crisp, and underneath it a grown, blurred copy fades into the
+backdrop. The halo is clipped to the backdrop's colour and confined to the
+soft stretches of the edge, so it never paints over a silhouette or a tree in
+front. Faint, low-contrast edges are ignored. On the logo samples nothing
+glows; on the witch illustration only the moon does.
+
+Snap mode is best with **stacked** layering (`--hierarchical stacked`, the
+app's default): shapes sit on top of the ones beneath, which avoids the faint
+hairline seams that edge-to-edge (cutout) shapes show when rendered, and
+roughly halves the file size. Cutout ("shapes don't overlap") is still there
+for cutting machines; glows need stacked.
+
 ### Removing regions (`--remove-at`, `--remove-color-at`, `--remove-background`)
 
 Erase parts of the image that should not be in the vector, such as a white
@@ -78,7 +94,7 @@ MSVC linker.
 
 ```
 cargo build --release -p vtracer-cli
-target\release\vtracer.exe in.png out.svg --clustering snap --hierarchical cutout --simplify 0.25 --lines
+target\release\vtracer.exe in.png out.svg --clustering snap --hierarchical stacked --simplify 0.25 --lines
 ```
 
 ## App
@@ -127,8 +143,7 @@ http://127.0.0.1:8765 and opens it.
 
 ## Roadmap
 
-- Gradients and glows: trace soft edges as real gradients instead of hard
-  cuts.
+- Smooth gradients across whole areas (shading, not just glowing edges).
 - A broader sample set (line art, game UI, gradients) so tuning isn't
   logo-only.
 - A desktop build with an installer and automatic updates.

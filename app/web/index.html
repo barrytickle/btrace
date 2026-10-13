@@ -83,7 +83,7 @@
             </button>
             <button class="choice" data-type="illustration" role="radio" aria-checked="false">
               <strong>Illustration</strong>
-              <span>Artwork with flat colours, some soft edges or glows</span>
+              <span>Artwork with flat colours; keeps soft glows</span>
             </button>
             <button class="choice" data-type="detailed" role="radio" aria-checked="false">
               <strong>Photo or detailed art</strong>
@@ -180,6 +180,8 @@
           <label class="row"><span>Soft-edge smoothing</span><output id="smoothOut">1.2</output></label>
           <input type="range" id="smooth" min="0" max="3" step="0.1" value="1.2" aria-label="Soft-edge smoothing">
           <p class="help">Tidies blurry or glowing edges so they don't come out jagged. Crisp edges are never touched.</p>
+          <label class="check"><input type="checkbox" id="glow"> Soft edges &amp; glows</label>
+          <p class="help">Keeps glows glowing: where the picture fades softly (a moon, a light), the SVG gets a matching soft halo instead of a hard edge.</p>
         </section>
 
         <section data-for="color">
@@ -213,6 +215,8 @@
             <input type="checkbox" id="lines" checked> Straight lines &amp; sharp corners
           </label>
           <p class="help">Makes straight edges perfectly straight and gives corners a sharp point. Turn off for hand-drawn, organic shapes.</p>
+          <label class="check"><input type="checkbox" id="noOverlap"> Shapes don't overlap</label>
+          <p class="help">For cutting machines (vinyl, laser): each colour becomes its own piece with holes where other colours sit. Normally shapes stack, which looks cleaner and keeps files smaller. Glows need stacking.</p>
         </section>
 
         <section>

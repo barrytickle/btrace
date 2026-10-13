@@ -31,6 +31,7 @@ struct Options {
     watershed_detail: Option<u32>,
     snap_scale: Option<u32>,
     snap_smooth: Option<f64>,
+    snap_glow: Option<bool>,
     lines: Option<bool>,
     remove_background: Option<bool>,
     remove: Vec<Point>,
@@ -124,6 +125,7 @@ fn config_from(options: JsValue) -> Result<Config, JsValue> {
     if let Some(v) = o.snap_smooth {
         c.snap_smooth = v;
     }
+    c.snap_glow = o.snap_glow.unwrap_or(false);
     c.lines = o.lines.unwrap_or(false);
     c.remove_background = o.remove_background.unwrap_or(false);
     c.remove = o

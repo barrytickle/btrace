@@ -134,6 +134,11 @@ struct Args {
     #[arg(long)]
     snap_smooth: Option<f64>,
 
+    /// Snap clustering: trace glows and other soft edges with a matching
+    /// blur instead of a hard edge (needs --hierarchical stacked).
+    #[arg(long)]
+    snap_glow: bool,
+
     /// Remove the region under this point, in source pixels: `X,Y`.
     /// Repeatable.
     #[arg(long, value_name = "X,Y")]
@@ -286,6 +291,7 @@ fn build_config(args: &Args) -> Result<Config, String> {
     if let Some(v) = args.snap_smooth {
         config.snap_smooth = v;
     }
+    config.snap_glow = args.snap_glow;
     for s in &args.remove_at {
         config.remove.push(parse_point(s, false)?);
     }

@@ -47,7 +47,7 @@ impl QuantizePass {
 impl OptimizerPass for QuantizePass {
     fn run(&self, doc: &mut VectorDoc) {
         for shape in &mut doc.shapes {
-            for sub in &mut shape.path.subpaths {
+            for sub in shape.paths_mut().flat_map(|p| p.subpaths.iter_mut()) {
                 for cmd in &mut sub.commands {
                     *cmd = match *cmd {
                         PathCmd::MoveTo(p) => PathCmd::MoveTo(self.round_pt(p)),
@@ -107,6 +107,22 @@ fn straight_cubic(s: PointF64, c1: PointF64, c2: PointF64, e: PointF64) -> bool 
         let t = (px * dx + py * dy) / len2;
         off <= STRAIGHT_EPS && (-1e-6..=1.0 + 1e-6).contains(&t)
     })
+}
+
+/// [`cleanup_subpath`] over a whole path, dropping subpaths left without
+/// geometry (a MoveTo plus at least one drawing command beyond Close).
+fn cleanup_path(path: &MultiPath) -> MultiPath {
+    let subpaths = path
+        .subpaths
+        .iter()
+        .map(cleanup_subpath)
+        .filter(|s| {
+            s.commands
+                .iter()
+                .any(|c| matches!(c, PathCmd::LineTo(_) | PathCmd::CubicTo(..)))
+        })
+        .collect();
+    MultiPath { subpaths }
 }
 
 fn cleanup_subpath(sub: &SubPath) -> SubPath {
@@ -172,21 +188,12 @@ fn cleanup_subpath(sub: &SubPath) -> SubPath {
 impl OptimizerPass for CleanupPass {
     fn run(&self, doc: &mut VectorDoc) {
         for shape in &mut doc.shapes {
-            let mut subpaths = Vec::with_capacity(shape.path.subpaths.len());
-            for sub in &shape.path.subpaths {
-                let simplified = cleanup_subpath(sub);
-                // Keep only subpaths with real geometry (a MoveTo plus at least
-                // one drawing command beyond Close).
-                let draws = simplified
-                    .commands
-                    .iter()
-                    .filter(|c| matches!(c, PathCmd::LineTo(_) | PathCmd::CubicTo(..)))
-                    .count();
-                if draws > 0 {
-                    subpaths.push(simplified);
-                }
-            }
-            shape.path = MultiPath { subpaths };
+            shape.path = cleanup_path(&shape.path);
+            shape.soft_zone = shape
+                .soft_zone
+                .as_ref()
+                .map(cleanup_path)
+                .filter(|z| !z.is_empty());
         }
         doc.shapes.retain(|s| !s.path.is_empty());
     }
@@ -208,13 +215,15 @@ pub struct CropPass {
 pub fn bounds(doc: &VectorDoc) -> Option<(PointF64, PointF64)> {
     let mut min = PointF64 { x: f64::INFINITY, y: f64::INFINITY };
     let mut max = PointF64 { x: f64::NEG_INFINITY, y: f64::NEG_INFINITY };
-    let mut add = |p: PointF64| {
-        min.x = min.x.min(p.x);
-        min.y = min.y.min(p.y);
-        max.x = max.x.max(p.x);
-        max.y = max.y.max(p.y);
-    };
     for shape in &doc.shapes {
+        // A blurred edge spreads visibly about 3 sigma beyond the path.
+        let spread = 3.0 * shape.paint.blur();
+        let mut add = |p: PointF64| {
+            min.x = min.x.min(p.x - spread);
+            min.y = min.y.min(p.y - spread);
+            max.x = max.x.max(p.x + spread);
+            max.y = max.y.max(p.y + spread);
+        };
         for sub in &shape.path.subpaths {
             let mut cur = PointF64::default();
             for cmd in &sub.commands {
@@ -282,7 +291,7 @@ impl OptimizerPass for CropPass {
         let dy = pad - min.y + (h - bh) / 2.0;
         let mv = |p: PointF64| PointF64 { x: p.x + dx, y: p.y + dy };
         for shape in &mut doc.shapes {
-            for sub in &mut shape.path.subpaths {
+            for sub in shape.paths_mut().flat_map(|p| p.subpaths.iter_mut()) {
                 for cmd in &mut sub.commands {
                     *cmd = match *cmd {
                         PathCmd::MoveTo(p) => PathCmd::MoveTo(mv(p)),
@@ -315,6 +324,7 @@ mod tests {
             path: MultiPath {
                 subpaths: vec![SubPath { commands }],
             },
+            soft_zone: None,
         });
         doc
     }

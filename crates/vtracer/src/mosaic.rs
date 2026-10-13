@@ -635,6 +635,7 @@ mod tests {
                     image,
                     visioncortex::PointI32 { x: i * 2, y: 0 },
                 ),
+                soft_zone: None,
             });
         }
 

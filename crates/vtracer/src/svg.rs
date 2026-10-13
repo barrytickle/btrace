@@ -18,7 +18,7 @@ use std::fmt::Write as _;
 
 use visioncortex::PointF64;
 
-use crate::ir::{Paint, PathCmd, Shape, SubPath, VectorDoc};
+use crate::ir::{MultiPath, Paint, PathCmd, Shape, SubPath, VectorDoc};
 
 /// SVG serializer configuration.
 #[derive(Debug, Clone, Copy)]
@@ -59,11 +59,13 @@ impl SvgWriter {
             h = doc.height
         );
 
+        let halos = self.write_defs(&mut out, doc);
+
         if self.shorthands {
-            self.write_grouped(&mut out, &doc.shapes);
+            self.write_grouped(&mut out, &doc.shapes, &halos);
         } else {
-            for shape in &doc.shapes {
-                self.write_path(&mut out, shape, true);
+            for (i, shape) in doc.shapes.iter().enumerate() {
+                self.write_path(&mut out, shape, i, true, &halos);
             }
         }
 
@@ -71,60 +73,154 @@ impl SvgWriter {
         out
     }
 
+    /// Definitions for glowing shapes, returning which shapes need an `id`
+    /// (they are a halo's backdrop) and which get a halo.
+    ///
+    /// A glowing ([`Paint::Blurred`]) shape is drawn crisp, over a halo: a
+    /// copy of itself grown and blurred by its σ (`halo{b}` filter: dilate,
+    /// then Gaussian), clipped to the earlier shapes of its `onto` color
+    /// (`onto{i}`), so it fades into that backdrop and never paints over
+    /// anything else, and, with a soft zone, masked to that zone (`zone{i}`,
+    /// feathered by the same σ). User-space units are source pixels, so the
+    /// glow scales with the SVG.
+    fn write_defs(&self, out: &mut String, doc: &VectorDoc) -> Halos {
+        let n = doc.shapes.len();
+        let mut halos = Halos {
+            id: vec![false; n],
+            halo: vec![false; n],
+        };
+        let (w, h) = (doc.width, doc.height);
+        let mut defs = String::new();
+        let mut blurs: Vec<u16> = Vec::new();
+        for (i, shape) in doc.shapes.iter().enumerate() {
+            let Paint::Blurred { blur, onto, .. } = shape.paint else { continue };
+            let backdrop: Vec<usize> = (0..i).filter(|&k| doc.shapes[k].paint.color() == onto).collect();
+            if backdrop.is_empty() {
+                continue;
+            }
+            halos.halo[i] = true;
+            blurs.push(blur);
+            let _ = write!(defs, "<clipPath id=\"onto{i}\">");
+            for k in backdrop {
+                halos.id[k] = true;
+                let _ = write!(defs, "<use href=\"#s{k}\"/>");
+            }
+            defs.push_str("</clipPath>\n");
+            if let Some(zone) = &shape.soft_zone {
+                let _ = writeln!(
+                    defs,
+                    "<mask id=\"zone{i}\" maskUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"{w}\" height=\"{h}\"><path d=\"{}\" fill=\"#fff\" filter=\"url(#feather{blur})\"/></mask>",
+                    self.encode(zone)
+                );
+            }
+        }
+        if blurs.is_empty() {
+            return halos;
+        }
+        blurs.sort_unstable();
+        blurs.dedup();
+        out.push_str("<defs>\n");
+        for b in blurs {
+            let sd = b as f64 / 100.0;
+            let region = format!("filterUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\" width=\"{w}\" height=\"{h}\"");
+            let _ = writeln!(
+                out,
+                "<filter id=\"halo{b}\" {region}><feMorphology operator=\"dilate\" radius=\"{sd}\"/><feGaussianBlur stdDeviation=\"{sd}\"/></filter>"
+            );
+            let _ = writeln!(
+                out,
+                "<filter id=\"feather{b}\" {region}><feGaussianBlur stdDeviation=\"{sd}\"/></filter>"
+            );
+        }
+        out.push_str(&defs);
+        out.push_str("</defs>\n");
+        halos
+    }
+
     /// Emit shapes, grouping maximal runs of consecutive same-fill shapes into
-    /// a single `<g fill>` (preserving paint order).
-    fn write_grouped(&self, out: &mut String, shapes: &[Shape]) {
+    /// a single `<g fill>` (preserving paint order). A glowing shape carries
+    /// its halo, so it is never grouped.
+    fn write_grouped(&self, out: &mut String, shapes: &[Shape], halos: &Halos) {
         let mut i = 0;
         while i < shapes.len() {
+            if halos.halo[i] {
+                self.write_path(out, &shapes[i], i, true, halos);
+                i += 1;
+                continue;
+            }
             let fill = shape_fill(&shapes[i]);
             let mut j = i + 1;
-            while j < shapes.len() && shape_fill(&shapes[j]) == fill {
+            while j < shapes.len() && !halos.halo[j] && shape_fill(&shapes[j]) == fill {
                 j += 1;
             }
-            let run = &shapes[i..j];
-            if run.len() > 1 {
-                let _ = writeln!(out, "<g fill=\"{}\">", fill);
-                for shape in run {
-                    self.write_path(out, shape, false);
+            if j - i > 1 {
+                let _ = writeln!(out, "<g {}>", fill);
+                for k in i..j {
+                    self.write_path(out, &shapes[k], k, false, halos);
                 }
                 out.push_str("</g>\n");
             } else {
-                self.write_path(out, &run[0], true);
+                self.write_path(out, &shapes[i], i, true, halos);
             }
             i = j;
         }
     }
 
-    fn write_path(&self, out: &mut String, shape: &Shape, with_fill: bool) {
+    /// Write shape `index`: its halo first if it glows, then the shape.
+    fn write_path(&self, out: &mut String, shape: &Shape, index: usize, with_fill: bool, halos: &Halos) {
         let d = self.encode_path(shape);
         if d.is_empty() {
             return;
         }
-        if with_fill {
+        if let (true, Paint::Blurred { color, blur, .. }) = (halos.halo[index], shape.paint) {
+            let mask = if shape.soft_zone.is_some() {
+                format!(" mask=\"url(#zone{index})\"")
+            } else {
+                String::new()
+            };
             let _ = writeln!(
                 out,
-                "<path d=\"{}\" fill=\"{}\"/>",
-                d,
-                shape_fill(shape)
+                "<path d=\"{d}\" fill=\"{}\" filter=\"url(#halo{blur})\" clip-path=\"url(#onto{index})\"{mask}/>",
+                color.to_hex_string()
             );
+        }
+        let id = if halos.id[index] {
+            format!(" id=\"s{index}\"")
         } else {
-            let _ = writeln!(out, "<path d=\"{}\"/>", d);
+            String::new()
+        };
+        if with_fill {
+            let _ = writeln!(out, "<path{id} d=\"{d}\" {}/>", shape_fill(shape));
+        } else {
+            let _ = writeln!(out, "<path{id} d=\"{d}\"/>");
         }
     }
 
     fn encode_path(&self, shape: &Shape) -> String {
+        self.encode(&shape.path)
+    }
+
+    fn encode(&self, path: &MultiPath) -> String {
         let mut emitter = Emitter::new(self.relative, self.shorthands, self.precision);
-        for sub in &shape.path.subpaths {
+        for sub in &path.subpaths {
             emitter.subpath(sub);
         }
         emitter.finish()
     }
 }
 
+/// Per-shape flags from [`SvgWriter::write_defs`].
+struct Halos {
+    /// Needs `id="s{i}"`: a halo's clip references it.
+    id: Vec<bool>,
+    /// Is drawn with a halo.
+    halo: Vec<bool>,
+}
+
+/// The paint attributes of a shape (its crisp fill; a glow's halo is a
+/// separate element).
 fn shape_fill(shape: &Shape) -> String {
-    match shape.paint {
-        Paint::Solid(c) => c.to_hex_string(),
-    }
+    format!("fill=\"{}\"", shape.paint.color().to_hex_string())
 }
 
 /// Streaming SVG-path encoder that tracks the current point.
@@ -406,6 +502,7 @@ mod tests {
         Shape {
             paint: Paint::Solid(Color::new(255, 0, 0)),
             path: MultiPath { subpaths: vec![sub] },
+            soft_zone: None,
         }
     }
 
@@ -467,6 +564,7 @@ mod tests {
             path: MultiPath {
                 subpaths: vec![outer, hole],
             },
+            soft_zone: None,
         }
     }
 

@@ -62,6 +62,7 @@ pub fn compose_mosaic(
             doc.shapes.push(Shape {
                 paint: map.paints[face.region as usize],
                 path,
+                soft_zone: None,
             });
         }
     }

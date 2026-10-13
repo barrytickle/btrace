@@ -158,6 +158,7 @@ impl Frontend for BinaryFrontend {
             seg.layers.push(Layer {
                 paint: Paint::Solid(black),
                 mask,
+                soft_zone: None,
             });
         }
 

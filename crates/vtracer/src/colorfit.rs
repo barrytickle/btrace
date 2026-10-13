@@ -47,6 +47,7 @@ mod tests {
         Layer {
             paint: Paint::Solid(color),
             mask: RegionMask::new(image, PointI32 { x: 0, y: 0 }),
+            soft_zone: None,
         }
     }
 

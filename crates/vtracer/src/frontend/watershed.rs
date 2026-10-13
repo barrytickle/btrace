@@ -368,6 +368,7 @@ impl WatershedHierarchy {
             seg.layers.push(Layer {
                 paint: Paint::Solid(mean(&sum[r], area[r])),
                 mask: full_canvas(w, h),
+                soft_zone: None,
             });
             return seg;
         }
@@ -437,6 +438,7 @@ impl WatershedHierarchy {
         seg.layers.push(Layer {
             paint: Paint::Solid(mean(&tree_sum[root], tree_area[root])),
             mask: full_canvas(w, h),
+            soft_zone: None,
         });
         let mut budget = ANCESTOR_AREA_BUDGET * n;
         for node in (k..root).rev() {
@@ -448,12 +450,14 @@ impl WatershedHierarchy {
             seg.layers.push(Layer {
                 paint: Paint::Solid(mean(&tree_sum[node], tree_area[node])),
                 mask: node_mask(node, k, &tree_child, &leaf_start, &leaf_px, w),
+                soft_zone: None,
             });
         }
         for t in 0..k {
             seg.layers.push(Layer {
                 paint: Paint::Solid(mean(&tree_sum[t], tree_area[t])),
                 mask: node_mask(t, k, &tree_child, &leaf_start, &leaf_px, w),
+                soft_zone: None,
             });
         }
         seg

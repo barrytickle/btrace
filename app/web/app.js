@@ -16,6 +16,7 @@ const ui = {
   threshold: $("threshold"), thresholdOut: $("thresholdOut"), adaptive: $("adaptive"),
   simplify: $("simplify"), simplifyOut: $("simplifyOut"),
   speckle: $("speckle"), speckleOut: $("speckleOut"), lines: $("lines"),
+  glow: $("glow"), noOverlap: $("noOverlap"),
   removeBg: $("removeBg"), removedCount: $("removedCount"),
   undoRemove: $("undoRemove"), clearRemove: $("clearRemove"),
   crop: $("crop"), pad: $("pad"), padOut: $("padOut"), padRow: $("padRow"),
@@ -64,7 +65,7 @@ function setStatus(text, kind = "") {
 
 function options(withCrop) {
   const o = {
-    hierarchical: "cutout",
+    hierarchical: ui.noOverlap.checked ? "cutout" : "stacked",
     mode: "spline",
     filterSpeckle: +ui.speckle.value,
     simplify: +ui.simplify.value,
@@ -79,6 +80,7 @@ function options(withCrop) {
       clustering: "snap",
       maxColors: +ui.maxColors.value,
       snapSmooth: +ui.smooth.value,
+      snapGlow: ui.glow.checked,
     });
   } else if (state.mode === "color") {
     Object.assign(o, {
@@ -441,7 +443,7 @@ function setControl(input, value) {
   else input.value = value;
   shows.get(input)?.();
 }
-for (const box of [ui.lines, ui.removeBg, ui.adaptive]) box.addEventListener("change", requestRender);
+for (const box of [ui.lines, ui.removeBg, ui.adaptive, ui.glow, ui.noOverlap]) box.addEventListener("change", requestRender);
 ui.crop.addEventListener("change", () => {
   g.crop.checked = ui.crop.checked;
   syncCrop();
@@ -505,8 +507,8 @@ const g = {
 
 /// What each image type sets. Detail and ink levels refine these.
 const TYPES = {
-  logo: { mode: "snap", smooth: 1.2, lines: true, simplify: 0.25, speckle: 4 },
-  illustration: { mode: "snap", smooth: 1.2, lines: true, simplify: 0.35, speckle: 4 },
+  logo: { mode: "snap", smooth: 1.2, lines: true, simplify: 0.25, speckle: 4, glow: false },
+  illustration: { mode: "snap", smooth: 1.2, lines: true, simplify: 0.35, speckle: 4, glow: true },
   detailed: { mode: "color", lines: false, simplify: 0.5 },
   bw: { mode: "bw", lines: true, simplify: 0.3, speckle: 4, adaptive: false },
 };
@@ -536,6 +538,7 @@ function applyType(type) {
   if (t.smooth !== undefined) setControl(ui.smooth, t.smooth);
   if (t.speckle !== undefined) setControl(ui.speckle, t.speckle);
   if (t.adaptive !== undefined) setControl(ui.adaptive, t.adaptive);
+  if (t.glow !== undefined) setControl(ui.glow, t.glow);
   setControl(ui.maxColors, 0);
   if (type === "detailed") applyDetail(guided.detail, false);
   if (type === "bw") applyInk(guided.ink, false);

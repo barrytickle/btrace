@@ -112,6 +112,7 @@ impl ColorClusterFrontend {
             seg.layers.push(Layer {
                 paint: Paint::Solid(cluster.residue_color()),
                 mask,
+                soft_zone: None,
             });
         }
         seg

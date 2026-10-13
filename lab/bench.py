@@ -29,6 +29,8 @@ CONFIGS = {
     "palette": ["--palette", "#1a2a6c,#f4f4f6,#f7a21b", "--hierarchical", "cutout"],
     "snap": ["--clustering", "snap", "--hierarchical", "cutout", "--simplify", "0.25"],
     "snap+lines": ["--clustering", "snap", "--hierarchical", "cutout", "--simplify", "0.25", "--lines"],
+    "snap-stacked": ["--clustering", "snap", "--hierarchical", "stacked", "--simplify", "0.25", "--lines"],
+    "snap-glow": ["--clustering", "snap", "--hierarchical", "stacked", "--simplify", "0.25", "--lines", "--snap-glow"],
 }
 # Optional extra configs from env, e.g. BENCH_ONLY=default,max4
 ONLY = os.environ.get("BENCH_ONLY")

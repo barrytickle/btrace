@@ -50,25 +50,8 @@ impl RemoveRegions {
 
 const NONE: u32 = u32::MAX;
 
-/// Index of the topmost layer covering each canvas pixel (`NONE` if none).
 fn topmost(seg: &Segmentation) -> Vec<u32> {
-    let (w, h) = (seg.width as usize, seg.height as usize);
-    let mut top = vec![NONE; w * h];
-    for (i, layer) in seg.layers.iter().enumerate() {
-        let m = &layer.mask;
-        for y in 0..m.height() {
-            for x in 0..m.width() {
-                if !m.image.get_pixel(x, y) {
-                    continue;
-                }
-                let (cx, cy) = (x as i32 + m.offset.x, y as i32 + m.offset.y);
-                if cx >= 0 && cy >= 0 && (cx as usize) < w && (cy as usize) < h {
-                    top[cy as usize * w + cx as usize] = i as u32;
-                }
-            }
-        }
-    }
-    top
+    seg.topmost()
 }
 
 fn same_color(a: &Color, b: &Color) -> bool {
@@ -203,6 +186,7 @@ mod tests {
         Layer {
             paint: Paint::Solid(color),
             mask: RegionMask::new(img, PointI32 { x: 0, y: 0 }),
+            soft_zone: None,
         }
     }
 
