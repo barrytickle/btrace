@@ -15,7 +15,7 @@
       <span id="version" class="version" hidden></span>
     </div>
     <button id="open" class="btn">Open image…</button>
-    <input id="file" type="file" accept="image/*" hidden>
+    <input id="file" type="file" accept="image/*" multiple hidden>
     <span id="filename" class="filename"></span>
     <div class="removals" id="removals" role="group" aria-label="Removed shapes" hidden>
       <span id="removedCount"></span>
@@ -63,12 +63,24 @@
         <div class="empty" id="empty">
           <div class="drop">
             <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 32 L24 12 L34 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M10 38 H38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-            <p><strong>Drop an image here</strong>, paste one, or <button id="openInline" class="link">browse</button></p>
-            <p class="muted">PNG, JPEG, WebP or GIF. Logos, icons, illustrations and UI art trace best.</p>
+            <p><strong>Drop images here</strong>, paste one, or <button id="openInline" class="link">browse</button></p>
+            <p class="muted">PNG, JPEG, WebP or GIF. Logos, icons, illustrations and UI art trace best. Drop several at once to trace a whole batch.</p>
           </div>
         </div>
         <div class="hint" id="hint" hidden></div>
         <div class="badge" id="guideBadge" hidden>Outlines shown · not part of the SVG</div>
+      </div>
+      <div class="batch" id="batch" role="region" aria-label="Batch" hidden>
+        <div class="batch-head">
+          <strong>Batch</strong>
+          <span id="batchCount" class="muted"></span>
+          <div class="batch-bar"><div id="batchProgress"></div></div>
+          <div class="spacer"></div>
+          <button id="batchAdd" class="btn small" title="Add more images to the batch">Add images…</button>
+          <button id="batchClear" class="btn small" title="Close the batch (nothing is saved)">Clear</button>
+          <button id="batchSave" class="btn small primary" disabled>Save all</button>
+        </div>
+        <div class="batch-strip" id="batchStrip"></div>
       </div>
     </section>
 

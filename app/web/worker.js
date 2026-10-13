@@ -57,5 +57,32 @@ onmessage = async (e) => {
       scheduled = true;
       setTimeout(drain, 0);
     }
+  } else if (msg.type === "trace-once") {
+    traceOnce(msg);
   }
 };
+
+// Batch jobs: decode an image and trace it with a throwaway session, leaving
+// any interactive session in this worker untouched.
+//   in:  { type: "trace-once", id, blob, options, cropped }
+//   out: { type: "traced", id, result, cropped, width, height, ms }
+//        or { type: "error", id, message }
+async function traceOnce(msg) {
+  const t0 = performance.now();
+  let t = null;
+  try {
+    const bitmap = await createImageBitmap(msg.blob);
+    const { width, height } = bitmap;
+    const ctx = new OffscreenCanvas(width, height).getContext("2d");
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    t = new Tracer(new Uint8Array(ctx.getImageData(0, 0, width, height).data.buffer), width, height);
+    const result = t.render(msg.options);
+    const cropped = msg.cropped ? t.render(msg.cropped) : null;
+    postMessage({ type: "traced", id: msg.id, result, cropped, width, height, ms: performance.now() - t0 });
+  } catch (e) {
+    postMessage({ type: "error", id: msg.id, message: String(e) });
+  } finally {
+    t?.free();
+  }
+}

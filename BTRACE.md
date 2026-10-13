@@ -125,6 +125,12 @@ http://127.0.0.1:8765 and opens it.
   in both Guided and Fine-tune.
 - **Keys:** V cycles views, H pan, O outlines, 0 fit, +/- zoom, Ctrl+S
   download, Space-drag pans in any tool.
+- **Batch:** open or drop several images at once. Each is traced in the
+  background with the current settings (a strip at the bottom shows
+  progress; changing a setting re-traces them all). Click any image to open
+  it and fine-tune it; its removals stay its own. **Save all** writes every
+  SVG into a folder you pick (desktop app; never overwrites, adds " (2)") or
+  downloads a zip (browser).
 
 ## Desktop app and releases
 
@@ -136,7 +142,8 @@ dialog, drag and drop from Explorer, and **automatic updates**.
   The installer lands in `app/desktop/src-tauri/target/release/bundle/nsis/`.
   Building update artifacts needs the signing key:
   `$env:TAURI_SIGNING_PRIVATE_KEY = "$env:USERPROFILE\.tauritrace.key"`.
-- **Release:** `powershell -ExecutionPolicy Bypass -File app\desktopelease.ps1 0.2.0`
+- **Release:** `powershell -ExecutionPolicy Bypass -File app\desktop
+elease.ps1 0.2.0`
   sets the version, commits, tags `v0.2.0` and pushes. The *Desktop release*
   GitHub Action builds the signed installer and publishes the GitHub Release
   with `latest.json`.

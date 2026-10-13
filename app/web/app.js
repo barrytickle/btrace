@@ -38,6 +38,18 @@ const state = {
   loaded: false,
 };
 
+// Batch state (see the batch section below). Declared up here because
+// start-up code further down already consults it.
+const batch = {
+  items: [],
+  current: -1, // index of the image open in the main view
+  nextId: 1,
+  busy: null, // id of the item the batch worker is tracing
+  worker: null,
+  refresh: 0, // debounce timer for re-tracing after a settings change
+  mode: null, // tracing mode the items' removals were made in
+};
+
 // ---- engine worker --------------------------------------------------------
 
 const worker = new Worker("worker.js", { type: "module" });
@@ -47,7 +59,7 @@ worker.onmessage = ({ data }) => {
     workerReady = true;
     setStatus("");
   } else if (data.type === "loaded") {
-    requestRender();
+    requestRender(false);
   } else if (data.type === "rendered") {
     if (data.id < state.shownId) return; // an older render finished late
     state.shownId = data.id;
@@ -66,7 +78,7 @@ function setStatus(text, kind = "") {
 
 // ---- options ------------------------------------------------------------------
 
-function options(withCrop) {
+function options(withCrop, removals = state.removals) {
   const o = {
     hierarchical: ui.noOverlap.checked ? "cutout" : "stacked",
     mode: "spline",
@@ -74,7 +86,7 @@ function options(withCrop) {
     simplify: +ui.simplify.value,
     lines: ui.lines.checked,
     removeBackground: ui.removeBg.checked,
-    remove: state.removals,
+    remove: removals,
     crop: withCrop ? +ui.pad.value : null,
     pathPrecision: 2,
   };
@@ -101,7 +113,10 @@ function options(withCrop) {
   return o;
 }
 
-function requestRender() {
+/// Trace the open image again. `settingsChanged` = false for things that only
+/// concern this image (it just loaded, or a shape was removed), so a batch is
+/// not re-traced for them.
+function requestRender(settingsChanged = true) {
   if (!state.loaded) return;
   const id = ++state.renderId;
   setStatus("Tracing…", "busy");
@@ -111,6 +126,7 @@ function requestRender() {
     options: options(false),
     cropped: ui.crop.checked ? options(true) : null,
   });
+  if (settingsChanged) batchSettingsChanged();
 }
 
 // ---- results ------------------------------------------------------------------
@@ -160,6 +176,7 @@ function showResult(result, cropped, ms) {
   ui.download.disabled = false;
   setStatus(`Traced in ${Math.round(ms)} ms`);
   showGuidedResult(result, out, bytes);
+  batchCurrentTraced(result, cropped);
 }
 
 function updateOutlines() {
@@ -185,7 +202,7 @@ async function download() {
     // Desktop: a native "Save as" dialog (a webview download has nowhere to go).
     try {
       const path = await desktop.core.invoke("save_svg", { name, contents: out.svg });
-      if (path) setStatus(`Saved ${path.split(/[\/]/).pop()}`);
+      if (path) setStatus(`Saved ${path.split(/[\\/]/).pop()}`);
     } catch (e) {
       setStatus(String(e), "error");
     }
@@ -200,7 +217,7 @@ async function download() {
 
 // ---- loading images ---------------------------------------------------------
 
-async function loadBlob(blob, name) {
+async function loadBlob(blob, name, removals = []) {
   try {
     const bitmap = await createImageBitmap(blob);
     const { width, height } = bitmap;
@@ -210,7 +227,7 @@ async function loadBlob(blob, name) {
     const rgba = ctx.getImageData(0, 0, width, height).data.buffer;
     bitmap.close();
 
-    Object.assign(state, { name, width, height, removals: [], result: null, cropped: null, loaded: true, shownId: state.renderId });
+    Object.assign(state, { name, blob, width, height, removals, result: null, cropped: null, loaded: true, shownId: state.renderId });
     if (state.originalURL) URL.revokeObjectURL(state.originalURL);
     state.originalURL = URL.createObjectURL(blob);
     ui.original.src = state.originalURL;
@@ -230,8 +247,7 @@ async function loadBlob(blob, name) {
 
 ui.open.onclick = ui.openInline.onclick = () => ui.file.click();
 ui.file.onchange = () => {
-  const f = ui.file.files[0];
-  if (f) loadBlob(f, f.name);
+  openFiles([...ui.file.files]);
   ui.file.value = "";
 };
 ui.viewport.addEventListener("dragover", (e) => {
@@ -242,8 +258,7 @@ ui.viewport.addEventListener("dragleave", () => ui.viewport.classList.remove("dr
 ui.viewport.addEventListener("drop", (e) => {
   e.preventDefault();
   ui.viewport.classList.remove("drag-over");
-  const f = [...e.dataTransfer.files].find((f) => f.type.startsWith("image/"));
-  if (f) loadBlob(f, f.name);
+  openFiles([...e.dataTransfer.files]);
 });
 window.addEventListener("paste", (e) => {
   const item = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"));
@@ -371,7 +386,8 @@ function updateRemovals(render = true) {
   const n = state.removals.length;
   ui.removedCount.textContent = `${n} removed`;
   $("removals").hidden = n === 0;
-  if (render) requestRender();
+  batchRemovalsChanged();
+  if (render) requestRender(false);
 }
 
 ui.undoRemove.onclick = () => {
@@ -405,7 +421,11 @@ function setMode(mode, render = true) {
   state.mode = mode;
   document.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
   document.querySelectorAll("[data-for]").forEach((s) => (s.hidden = s.dataset.for !== mode));
-  // Clicked points refer to regions of the old segmentation.
+  // Clicked points refer to regions of the old segmentation, in every image.
+  if (state.mode !== batch.mode) {
+    batch.items.forEach((it) => (it.removals = []));
+    batch.mode = state.mode;
+  }
   if (state.removals.length) {
     state.removals = [];
     updateRemovals(false);
@@ -713,3 +733,298 @@ if (desktop) {
   });
   checkForUpdate();
 }
+
+// ---- batch --------------------------------------------------------------------------
+//
+// Open several images and they become a batch: every image is traced in the
+// background with the current settings, a strip shows progress, clicking an
+// image opens it in the main view to fine-tune (its removals stay its own),
+// and Save all writes every SVG at once. Settings are shared; changing one
+// re-traces the whole batch.
+
+
+function batchWorker() {
+  if (batch.worker) return batch.worker;
+  batch.worker = new Worker("worker.js", { type: "module" });
+  batch.worker.onmessage = ({ data }) => {
+    if (data.type !== "traced" && data.type !== "error") return;
+    const item = batch.items.find((it) => it.id === data.id);
+    batch.busy = null;
+    if (item && item.status === "tracing") {
+      if (data.type === "traced") {
+        Object.assign(item, { status: "done", result: data.result, cropped: data.cropped, width: data.width, height: data.height });
+      } else {
+        Object.assign(item, { status: "error", error: data.message });
+      }
+      renderBatch();
+    }
+    pumpBatch();
+  };
+  return batch.worker;
+}
+
+function openFiles(files) {
+  const images = files.filter((f) => f.type.startsWith("image/"));
+  if (!images.length) return;
+  if (images.length === 1 && !batch.items.length) {
+    loadBlob(images[0], images[0].name);
+    return;
+  }
+  // Starting a batch from a single open image: keep that image in it.
+  if (!batch.items.length && state.loaded && state.blob) {
+    addToBatch(state.blob, state.name, state.removals);
+    batch.current = 0;
+  }
+  for (const f of images) addToBatch(f, f.name, []);
+  if (batch.current < 0) openBatchItem(0);
+  renderBatch();
+  pumpBatch();
+}
+
+function addToBatch(blob, name, removals) {
+  batch.items.push({
+    id: batch.nextId++, blob, name, removals,
+    status: "waiting", result: null, cropped: null,
+    thumb: URL.createObjectURL(blob), traceThumb: null,
+  });
+}
+
+/// Trace the next waiting image (one at a time; the open image is traced by
+/// the main view instead).
+function pumpBatch() {
+  if (batch.busy !== null) return;
+  const item = batch.items.find((it, i) => it.status === "waiting" && i !== batch.current);
+  if (!item) {
+    renderBatch();
+    return;
+  }
+  item.status = "tracing";
+  batch.busy = item.id;
+  batchWorker().postMessage({
+    type: "trace-once",
+    id: item.id,
+    blob: item.blob,
+    options: options(false, item.removals),
+    cropped: ui.crop.checked ? options(true, item.removals) : null,
+  });
+  renderBatch();
+}
+
+function openBatchItem(i) {
+  const item = batch.items[i];
+  if (!item || i === batch.current) return;
+  batch.current = i;
+  loadBlob(item.blob, item.name, item.removals);
+  renderBatch();
+}
+
+/// The main view finished tracing the open image: that's its result too.
+function batchCurrentTraced(result, cropped) {
+  const item = batch.items[batch.current];
+  if (!item) return;
+  Object.assign(item, { status: "done", result, cropped });
+  renderBatch();
+}
+
+function batchRemovalsChanged() {
+  const item = batch.items[batch.current];
+  if (item) item.removals = state.removals;
+}
+
+/// A setting changed: every other image needs tracing again. Debounced so a
+/// slider drag re-queues once, after it settles.
+function batchSettingsChanged() {
+  if (!batch.items.length) return;
+  clearTimeout(batch.refresh);
+  batch.refresh = setTimeout(() => {
+    batch.items.forEach((it, i) => {
+      if (i !== batch.current) Object.assign(it, { status: "waiting", result: null, cropped: null });
+    });
+    // A trace in flight used the old settings; its result is dropped.
+    batch.busy = null;
+    batch.worker?.terminate();
+    batch.worker = null;
+    renderBatch();
+    pumpBatch();
+  }, 350);
+}
+
+function removeFromBatch(i) {
+  const [item] = batch.items.splice(i, 1);
+  URL.revokeObjectURL(item.thumb);
+  if (item.traceThumb) URL.revokeObjectURL(item.traceThumb);
+  if (item.id === batch.busy) {
+    batch.busy = null;
+    batch.worker?.terminate();
+    batch.worker = null;
+  }
+  if (i === batch.current) {
+    batch.current = -1;
+    if (batch.items.length) openBatchItem(Math.min(i, batch.items.length - 1));
+  } else if (i < batch.current) {
+    batch.current--;
+  }
+  if (!batch.items.length) clearBatch();
+  renderBatch();
+  pumpBatch();
+}
+
+function clearBatch() {
+  for (const it of batch.items) {
+    URL.revokeObjectURL(it.thumb);
+    if (it.traceThumb) URL.revokeObjectURL(it.traceThumb);
+  }
+  batch.items = [];
+  batch.current = -1;
+  batch.busy = null;
+  batch.worker?.terminate();
+  batch.worker = null;
+  renderBatch();
+}
+
+function renderBatch() {
+  const bar = $("batch");
+  const n = batch.items.length;
+  bar.hidden = n === 0;
+  if (!n) return;
+  const done = batch.items.filter((it) => it.status === "done").length;
+  const failed = batch.items.filter((it) => it.status === "error").length;
+  $("batchCount").textContent = `${done} of ${n} traced` + (failed ? ` · ${failed} failed` : "");
+  $("batchProgress").style.width = `${(100 * (done + failed)) / n}%`;
+  $("batchSave").disabled = done === 0;
+  $("batchSave").textContent = done === n ? `Save all ${n}` : `Save ${done} traced`;
+
+  const strip = $("batchStrip");
+  strip.replaceChildren(
+    ...batch.items.map((it, i) => {
+      if (it.status === "done" && it.result && !it.traceThumb) it.traceThumb = svgURL(it.result.svg);
+      if (it.status !== "done" && it.traceThumb) {
+        URL.revokeObjectURL(it.traceThumb);
+        it.traceThumb = null;
+      }
+      const card = document.createElement("button");
+      card.className = `bitem ${it.status}${i === batch.current ? " current" : ""}`;
+      card.title = it.status === "error" ? `${it.name}: ${it.error}` : it.name;
+      card.onclick = () => openBatchItem(i);
+      const img = document.createElement("img");
+      img.src = it.traceThumb ?? it.thumb;
+      img.alt = "";
+      const label = document.createElement("span");
+      label.textContent = it.name;
+      const badge = document.createElement("i");
+      badge.className = "badge-dot";
+      const x = document.createElement("span");
+      x.className = "bx";
+      x.textContent = "×";
+      x.title = "Remove from batch";
+      x.onclick = (e) => {
+        e.stopPropagation();
+        removeFromBatch(i);
+      };
+      card.append(img, label, badge, x);
+      return card;
+    }),
+  );
+}
+
+/// SVG file names for the batch, unique within it (logo.png and logo.jpg
+/// would both be logo.svg).
+function batchFiles() {
+  const used = new Set();
+  return batch.items
+    .filter((it) => it.status === "done")
+    .map((it) => {
+      const stem = it.name.replace(/\.[^.]+$/, "") || "trace";
+      let name = `${stem}.svg`;
+      for (let k = 2; used.has(name.toLowerCase()); k++) name = `${stem} (${k}).svg`;
+      used.add(name.toLowerCase());
+      return { name, contents: (it.cropped ?? it.result).svg };
+    });
+}
+
+async function saveBatch() {
+  const files = batchFiles();
+  if (!files.length) return;
+  if (desktop) {
+    try {
+      const saved = await desktop.core.invoke("save_all", { files });
+      if (saved) setStatus(`Saved ${saved.count} SVGs to ${saved.folder.split(/[\\/]/).pop()}`);
+    } catch (e) {
+      setStatus(String(e), "error");
+    }
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(zipStore(files));
+  a.download = "btrace-svgs.zip";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  setStatus(`Downloaded ${files.length} SVGs as a zip`);
+}
+
+$("batchSave").onclick = saveBatch;
+$("batchClear").onclick = () => {
+  clearBatch();
+};
+$("batchAdd").onclick = () => ui.file.click();
+
+// ---- zip (store-only; SVGs are small and this keeps it dependency-free) ------------
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/// A .zip of `files` ({ name, contents }) with no compression.
+function zipStore(files) {
+  const enc = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const data = enc.encode(f.contents);
+    const crc = crc32(data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true); // UTF-8 names
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, name.length, true);
+    parts.push(local, name, data);
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true);
+    cd.setUint16(4, 20, true);
+    cd.setUint16(6, 20, true);
+    cd.setUint16(8, 0x0800, true);
+    cd.setUint32(16, crc, true);
+    cd.setUint32(20, data.length, true);
+    cd.setUint32(24, data.length, true);
+    cd.setUint16(28, name.length, true);
+    cd.setUint32(42, offset, true);
+    central.push(cd, name);
+    offset += 30 + name.length + data.length;
+  }
+  const cdSize = central.reduce((n, p) => n + p.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: "application/zip" });
+}
+

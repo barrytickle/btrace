@@ -67,7 +67,7 @@ button { font: inherit; color: inherit; }
 
 /* ---- layout ------------------------------------------------------------ */
 .workspace { display: grid; grid-template-columns: 1fr 292px; min-height: 0; }
-.canvas-area { display: grid; grid-template-rows: auto 1fr; min-width: 0; min-height: 0; }
+.canvas-area { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; min-height: 0; }
 
 .toolbar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -215,3 +215,34 @@ input[type=range]:disabled, .row.disabled { opacity: .4; }
 .update[hidden] { display: none; }
 .update span { color: var(--ink); white-space: nowrap; }
 .update .btn.small { border-radius: 999px; }
+
+/* ---- batch ----------------------------------------------------------------------------- */
+.batch { border-top: 1px solid var(--line); background: var(--panel); padding: 8px 12px 10px; display: grid; gap: 8px; min-width: 0; }
+.batch[hidden] { display: none; }
+.batch-head { display: flex; align-items: center; gap: 10px; }
+.batch-bar { width: 140px; height: 5px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.batch-bar div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.batch-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.bitem {
+  position: relative; flex: 0 0 auto; width: 96px; padding: 4px; display: grid; gap: 3px;
+  background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 7px; cursor: pointer; text-align: left;
+}
+.bitem:hover { border-color: var(--ink-3); }
+.bitem.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.bitem img {
+  width: 100%; height: 60px; object-fit: contain; border-radius: 4px;
+  background-color: #2a2e36;
+  background-image: linear-gradient(45deg, #343944 25%, transparent 25%, transparent 75%, #343944 75%),
+    linear-gradient(45deg, #343944 25%, transparent 25%, transparent 75%, #343944 75%);
+  background-size: 10px 10px; background-position: 0 0, 5px 5px;
+}
+.bitem > span:not(.bx) { font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge-dot { position: absolute; top: 8px; left: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); box-shadow: 0 0 0 2px var(--panel-2); }
+.bitem.tracing .badge-dot { background: var(--accent); animation: pulse .9s ease-in-out infinite alternate; }
+.bitem.done .badge-dot { background: var(--accent); }
+.bitem.error .badge-dot { background: var(--danger); }
+.bx {
+  position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; border-radius: 50%;
+  display: none; place-items: center; background: rgba(0,0,0,.65); color: #fff; font-size: 13px; line-height: 1;
+}
+.bitem:hover .bx { display: grid; }
