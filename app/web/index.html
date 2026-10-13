@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Btrace</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314161b'/%3E%3Cpath d='M8 24 L16 7 L24 24' fill='none' stroke='%233ccfb0' stroke-width='3.2' stroke-linejoin='round' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='7' r='2.6' fill='%23f2efe6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8 24 L16 7 L24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="16" cy="7" r="2.6" fill="var(--ink)"/></svg>
+      <span>Btrace</span>
+    </div>
+    <button id="open" class="btn">Open image…</button>
+    <input id="file" type="file" accept="image/*" hidden>
+    <span id="filename" class="filename"></span>
+    <div class="spacer"></div>
+    <span id="status" class="status" aria-live="polite"></span>
+    <button id="download" class="btn primary" disabled>Download SVG</button>
+  </header>
+
+  <main class="workspace">
+    <section class="canvas-area" id="canvasArea">
+      <div class="toolbar" role="toolbar" aria-label="Canvas tools">
+        <div class="seg" role="group" aria-label="View">
+          <button data-view="split" class="on" title="Split view: drag the divider (V)">Split</button>
+          <button data-view="trace" title="Trace only">Trace</button>
+          <button data-view="original" title="Original only">Original</button>
+        </div>
+        <div class="seg" role="group" aria-label="Tool">
+          <button data-tool="pan" class="on" title="Pan (H) · scroll to zoom">Pan</button>
+          <button data-tool="remove" title="Remove: click a region · Shift-click removes its whole colour (R)">Remove</button>
+        </div>
+        <div class="seg" role="group" aria-label="Zoom">
+          <button id="zoomOut" title="Zoom out (-)">−</button>
+          <button id="zoomLabel" class="zoom-label" title="Fit to window (0)">100%</button>
+          <button id="zoomIn" title="Zoom in (+)">+</button>
+        </div>
+        <label class="check" title="Show the trace's outlines over it">
+          <input type="checkbox" id="outlines"> Outlines
+        </label>
+      </div>
+
+      <div class="viewport" id="viewport">
+        <div class="stage" id="stage">
+          <img id="original" alt="Original image" draggable="false">
+          <div class="trace-layer" id="traceLayer"><img id="trace" alt="Traced vector" draggable="false"></div>
+          <div class="divider" id="divider" role="slider" aria-label="Split position" tabindex="0"><span></span></div>
+        </div>
+        <div class="empty" id="empty">
+          <div class="drop">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 32 L24 12 L34 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M10 38 H38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+            <p><strong>Drop an image here</strong>, paste one, or <button id="openInline" class="link">browse</button></p>
+            <p class="muted">PNG, JPEG, WebP or GIF. Logos, icons, illustrations and UI art trace best.</p>
+          </div>
+        </div>
+        <div class="hint" id="hint" hidden></div>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="Settings">
+      <section>
+        <h2>Mode</h2>
+        <div class="seg wide" role="group" aria-label="Mode">
+          <button data-mode="snap" class="on" title="Clean flat colours. Best for logos, icons and illustrations">Flat art</button>
+          <button data-mode="color" title="Keeps gradients and fine detail. For detailed art and photos">Detailed</button>
+          <button data-mode="bw" title="Black and white line art and scans">B&amp;W</button>
+        </div>
+      </section>
+
+      <section data-for="snap">
+        <h2>Colours</h2>
+        <label class="row">
+          <span>Palette size</span>
+          <output id="maxColorsOut">Auto</output>
+        </label>
+        <input type="range" id="maxColors" min="0" max="16" step="1" value="0" aria-label="Palette size">
+        <div class="swatches" id="swatches" aria-label="Colours in the trace"></div>
+        <label class="row">
+          <span title="Smooths soft, grainy edges such as glows. Crisp edges are left alone">Soft-edge smoothing</span>
+          <output id="smoothOut">1.2</output>
+        </label>
+        <input type="range" id="smooth" min="0" max="3" step="0.1" value="1.2" aria-label="Soft-edge smoothing">
+      </section>
+
+      <section data-for="color">
+        <h2>Colours</h2>
+        <label class="row"><span>Colour precision</span><output id="precisionOut">6</output></label>
+        <input type="range" id="precision" min="1" max="8" step="1" value="6" aria-label="Colour precision">
+        <label class="row"><span title="Colour difference between gradient layers">Gradient step</span><output id="gradientOut">16</output></label>
+        <input type="range" id="gradient" min="1" max="64" step="1" value="16" aria-label="Gradient step">
+      </section>
+
+      <section data-for="bw">
+        <h2>Threshold</h2>
+        <label class="row"><span>Threshold</span><output id="thresholdOut">128</output></label>
+        <input type="range" id="threshold" min="1" max="254" step="1" value="128" aria-label="Threshold">
+        <label class="check"><input type="checkbox" id="adaptive"> Adaptive (uneven lighting)</label>
+      </section>
+
+      <section>
+        <h2>Shapes</h2>
+        <label class="row"><span title="Fewer curve points; higher = smoother, smaller file">Simplify</span><output id="simplifyOut">0.25 px</output></label>
+        <input type="range" id="simplify" min="0" max="1.5" step="0.05" value="0.25" aria-label="Simplify">
+        <label class="row"><span title="Drops patches smaller than this">Speckle filter</span><output id="speckleOut">4 px</output></label>
+        <input type="range" id="speckle" min="0" max="32" step="1" value="4" aria-label="Speckle filter">
+        <label class="check" title="Straight edges become exact lines, with sharp corners where they meet">
+          <input type="checkbox" id="lines" checked> Straight lines &amp; sharp corners
+        </label>
+      </section>
+
+      <section>
+        <h2>Background &amp; crop</h2>
+        <label class="check" title="Removes the colour around the image border">
+          <input type="checkbox" id="removeBg"> Remove background
+        </label>
+        <div class="removed">
+          <span id="removedCount" class="muted">Use the Remove tool to click away regions.</span>
+          <div class="btns">
+            <button id="undoRemove" class="btn small" disabled title="Undo last removal (Ctrl+Z)">Undo</button>
+            <button id="clearRemove" class="btn small" disabled>Clear</button>
+          </div>
+        </div>
+        <label class="check" title="Trims the SVG to the drawing">
+          <input type="checkbox" id="crop"> Crop to content
+        </label>
+        <label class="row indent" id="padRow"><span>Padding</span><output id="padOut">0 px</output></label>
+        <input type="range" class="indent" id="pad" min="0" max="32" step="1" value="0" aria-label="Crop padding">
+      </section>
+
+      <section class="stats">
+        <h2>Output</h2>
+        <dl>
+          <div><dt>Shapes</dt><dd id="statShapes">–</dd></div>
+          <div><dt>Colours</dt><dd id="statColors">–</dd></div>
+          <div><dt>Size</dt><dd id="statSize">–</dd></div>
+          <div><dt>Canvas</dt><dd id="statCanvas">–</dd></div>
+          <div><dt>Time</dt><dd id="statTime">–</dd></div>
+        </dl>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

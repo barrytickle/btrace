@@ -9,3 +9,7 @@ Cargo.lock
 
 # Btrace lab output
 lab/out/
+
+# Btrace app build output
+app/wasm/target/
+app/web/pkg/

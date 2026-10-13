@@ -47,13 +47,16 @@ impl SvgWriter {
         out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         let _ = writeln!(
             out,
-            "<!-- Generator: visioncortex VTracer {} -->",
+            "<!-- Generator: Btrace (based on visioncortex VTracer {}) -->",
             env!("CARGO_PKG_VERSION")
         );
+        // viewBox makes the drawing scale with the element it is shown in;
+        // without it a larger <img> or CSS size just pads the canvas.
         let _ = writeln!(
             out,
-            "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\">",
-            doc.width, doc.height
+            "<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\">",
+            w = doc.width,
+            h = doc.height
         );
 
         if self.shorthands {

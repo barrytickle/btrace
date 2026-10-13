@@ -81,6 +81,29 @@ cargo build --release -p vtracer-cli
 target\release\vtracer.exe in.png out.svg --clustering snap --hierarchical cutout --simplify 0.25 --lines
 ```
 
+## App
+
+`app/` is Btrace's interface: a web page running the engine as WebAssembly
+in a background worker, with a cached session so slider moves and clicks only
+re-run the cheap stages.
+
+```
+powershell -ExecutionPolicy Bypass -File app\run.ps1
+```
+
+builds the engine if needed (`app\build.ps1`; needs `rustup target add
+wasm32-unknown-unknown` and `cargo install wasm-pack`), serves `app/web` on
+http://127.0.0.1:8765 and opens it.
+
+- **Open:** button, drag and drop, or paste.
+- **View:** split (drag the divider), trace only, original only; scroll to
+  zoom, drag to pan; Outlines shows every path edge.
+- **Remove tool (R):** click a region to remove it, Shift-click to remove its
+  whole colour; Ctrl+Z undoes. Plus automatic background removal and crop.
+- **Modes:** Flat art (snap), Detailed (colour clustering), B&W.
+- **Keys:** V cycles views, H pan, 0 fit, +/- zoom, Ctrl+S download, Space-drag
+  pans in any tool.
+
 ## Lab
 
 `lab/` is the test bench:
