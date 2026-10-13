@@ -10,6 +10,7 @@ use crate::colorfit::{
 use crate::compose::Compositing;
 use crate::error::Error;
 use crate::fitter::{CurveFitter, FitParams, PixelFitter, PolygonFitter, SplineFitter};
+use crate::lines::StraightenLines;
 use crate::frontend::{
     BinaryFrontend, ColorClusterFrontend, Frontend, SnapFrontend, Threshold, WatershedFrontend,
 };
@@ -121,7 +122,7 @@ pub struct Config {
     pub max_iterations: usize,
     /// Splice threshold in degrees.
     pub splice_threshold: i32,
-    /// Curve simplification tolerance in px (paper.js-style `simplify`):
+    /// Curve simplification tolerance in source px (paper.js-style `simplify`):
     /// re-fit smooth runs of fitted cubics with the fewest curves that stay
     /// within this distance, keeping corners in place. `None` = off. Only
     /// affects spline mode; pixel/polygon polylines pass through untouched.
@@ -168,6 +169,10 @@ pub struct Config {
     /// Trim the canvas to the drawing's bounds plus this padding (px).
     /// `None` = keep the source size.
     pub crop: Option<f64>,
+    /// Detect straight runs and replace them with exact lines, sharpening
+    /// corners where two lines meet (see [`StraightenLines`]). Spline mode
+    /// only; runs after `simplify`.
+    pub lines: bool,
 }
 
 impl Default for Config {
@@ -198,6 +203,7 @@ impl Default for Config {
             remove: Vec::new(),
             remove_background: false,
             crop: None,
+            lines: false,
         }
     }
 }
@@ -326,13 +332,19 @@ impl Config {
     }
 
     fn curve_passes(&self) -> Vec<Box<dyn CurvePass>> {
-        match self.simplify {
-            Some(tolerance) if tolerance > 0.0 => vec![Box::new(SimplifyCurves {
+        let mut passes: Vec<Box<dyn CurvePass>> = Vec::new();
+        if let Some(tolerance) = self.simplify.filter(|t| *t > 0.0) {
+            passes.push(Box::new(SimplifyCurves {
                 tolerance,
                 corner_threshold: deg2rad(self.corner_threshold),
-            })],
-            _ => Vec::new(),
+            }));
         }
+        // After simplify: its re-fit would otherwise merge lines back into
+        // the smooth curves around them.
+        if self.lines {
+            passes.push(Box::new(StraightenLines::default()));
+        }
+        passes
     }
 
     fn optimizers(&self) -> Vec<Box<dyn OptimizerPass>> {

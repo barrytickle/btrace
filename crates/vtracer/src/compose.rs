@@ -15,7 +15,7 @@ use crate::fitter::CurveFitter;
 use crate::ir::{MultiPath, RegionMask, Segmentation, Shape, VectorDoc};
 use crate::mosaic::{compose_mosaic, SegmentFitter};
 use crate::progress::{Ctx, Phase};
-use crate::simplify::CurvePass;
+use crate::simplify::{apply_passes, CurvePass};
 
 /// Which compositing strategy the pipeline uses. Each variant owns its fitter.
 pub enum Compositing {
@@ -76,13 +76,11 @@ fn fit_region(
     fitter: &dyn CurveFitter,
     mask: &RegionMask,
     passes: &[Box<dyn CurvePass>],
+    scale: u32,
 ) -> MultiPath {
     let mut path = MultiPath::new();
-    for mut geom in fitter.fit_region(mask) {
-        for pass in passes {
-            geom = pass.ring(geom);
-        }
-        path.push(geom.into_closed_subpath());
+    for geom in fitter.fit_region(mask) {
+        path.push(apply_passes(passes, geom, true, scale).into_closed_subpath());
     }
     path
 }
@@ -99,7 +97,7 @@ fn compose_stacked_with(
     let total = seg.layers.len().max(1);
     for (i, layer) in seg.layers.iter().enumerate() {
         ctx.check()?;
-        let path = fit_region(fitter, &layer.mask, passes);
+        let path = fit_region(fitter, &layer.mask, passes, seg.scale);
         if !path.is_empty() {
             doc.shapes.push(Shape {
                 paint: layer.paint,
@@ -119,7 +117,7 @@ pub fn compose_stacked(
 ) -> VectorDoc {
     let mut doc = VectorDoc::new(seg.width, seg.height);
     for layer in &seg.layers {
-        let path = fit_region(fitter, &layer.mask, passes);
+        let path = fit_region(fitter, &layer.mask, passes, seg.scale);
         if !path.is_empty() {
             doc.shapes.push(Shape {
                 paint: layer.paint,

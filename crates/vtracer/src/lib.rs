@@ -85,6 +85,7 @@ pub mod error;
 pub mod fitter;
 pub mod frontend;
 pub mod ir;
+pub mod lines;
 pub mod mosaic;
 pub mod optimize;
 pub mod pipeline;

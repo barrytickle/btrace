@@ -88,6 +88,27 @@ fn collinear(a: PointF64, b: PointF64, c: PointF64) -> bool {
     (cross.abs() / base) < COLLINEAR_EPS
 }
 
+/// Distance (px) a handle may sit off the chord and still count as on it.
+/// Covers coordinate rounding at the default 2 decimal places.
+const STRAIGHT_EPS: f64 = 0.02;
+
+/// Whether the cubic `s, c1, c2, e` is a straight segment: both handles on
+/// the chord, between its ends. Such a curve traces exactly the chord.
+fn straight_cubic(s: PointF64, c1: PointF64, c2: PointF64, e: PointF64) -> bool {
+    let (dx, dy) = (e.x - s.x, e.y - s.y);
+    let len2 = dx * dx + dy * dy;
+    if len2 < COINCIDENT_EPS {
+        return false;
+    }
+    let len = len2.sqrt();
+    [c1, c2].iter().all(|c| {
+        let (px, py) = (c.x - s.x, c.y - s.y);
+        let off = (px * dy - py * dx).abs() / len;
+        let t = (px * dx + py * dy) / len2;
+        off <= STRAIGHT_EPS && (-1e-6..=1.0 + 1e-6).contains(&t)
+    })
+}
+
 fn cleanup_subpath(sub: &SubPath) -> SubPath {
     let mut out = SubPath::new();
     // `prev` is the point active before the last emitted command; `last` is the
@@ -116,6 +137,23 @@ fn cleanup_subpath(sub: &SubPath) -> SubPath {
                 out.commands.push(PathCmd::LineTo(p));
                 prev = last;
                 last = p;
+            }
+            PathCmd::CubicTo(c1, c2, e) if straight_cubic(last, c1, c2, e) => {
+                // A cubic whose handles lie on its chord traces the chord:
+                // write it as a line (and let the line rules above merge it).
+                if approx_eq(last, e) {
+                    continue;
+                }
+                if let Some(PathCmd::LineTo(_)) = out.commands.last() {
+                    if collinear(prev, last, e) {
+                        *out.commands.last_mut().unwrap() = PathCmd::LineTo(e);
+                        last = e;
+                        continue;
+                    }
+                }
+                out.commands.push(PathCmd::LineTo(e));
+                prev = last;
+                last = e;
             }
             PathCmd::CubicTo(c1, c2, e) => {
                 out.commands.push(PathCmd::CubicTo(c1, c2, e));

@@ -16,6 +16,37 @@ use visioncortex::PointF64;
 
 use crate::fitter::FittedGeom;
 
+/// Run `passes` over one fitted contour in *source-pixel* units.
+///
+/// A frontend may trace an upscaled working canvas ([`Segmentation::scale`]);
+/// the geometry is shrunk to source pixels for the passes and grown back
+/// after, so a pass tolerance means the same on every image whatever scale
+/// was picked for it. Deterministic, so two segments that share a junction
+/// still agree on it bit for bit.
+///
+/// [`Segmentation::scale`]: crate::ir::Segmentation::scale
+pub(crate) fn apply_passes(
+    passes: &[Box<dyn CurvePass>],
+    mut geom: FittedGeom,
+    ring: bool,
+    scale: u32,
+) -> FittedGeom {
+    if passes.is_empty() {
+        return geom;
+    }
+    let s = scale.max(1) as f64;
+    if scale > 1 {
+        geom = geom.map_points(|p| PointF64 { x: p.x / s, y: p.y / s });
+    }
+    for pass in passes {
+        geom = if ring { pass.ring(geom) } else { pass.open(geom) };
+    }
+    if scale > 1 {
+        geom = geom.map_points(|p| PointF64 { x: p.x * s, y: p.y * s });
+    }
+    geom
+}
+
 /// A geometry pass over one fitted contour, run between curve fitting and
 /// composition. Implementations must keep an open chain's endpoints exactly
 /// (mosaic junction nodes must not move) and keep a ring closed.

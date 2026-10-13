@@ -31,6 +31,16 @@ pub enum FittedGeom {
 }
 
 impl FittedGeom {
+    /// Apply `f` to every point (endpoints and control points).
+    pub fn map_points(self, f: impl Fn(PointF64) -> PointF64) -> Self {
+        match self {
+            FittedGeom::Polyline(points) => FittedGeom::Polyline(points.into_iter().map(&f).collect()),
+            FittedGeom::Beziers(chain) => {
+                FittedGeom::Beziers(chain.into_iter().map(|c| c.map(&f)).collect())
+            }
+        }
+    }
+
     /// Convert one closed contour into a `MoveTo … Close` subpath.
     pub fn into_closed_subpath(self) -> SubPath {
         match self {

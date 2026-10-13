@@ -15,7 +15,7 @@ if "--crop" in rest:
     i = rest.index("--crop"); crop = tuple(map(int, rest[i + 1].split(","))); del rest[i:i + 2]
 if "--zoom" in rest:
     i = rest.index("--zoom"); zoom = int(rest[i + 1]); del rest[i:i + 2]
-base = ["--clustering", "snap", "--hierarchical", "cutout", "--simplify", "2"] + rest
+base = ["--clustering", "snap", "--hierarchical", "cutout", "--simplify", "0.25"] + rest
 OUT.mkdir(exist_ok=True)
 w, h = Image.open(src).size
 tiles = [("source", Image.open(src).convert("RGBA").resize((w * zoom, h * zoom), Image.LANCZOS))]

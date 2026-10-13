@@ -52,6 +52,18 @@ in an interactive session each click costs nothing extra.
 Removed areas become transparent; a removed region never exposes whatever
 was beneath it.
 
+### Straight lines and sharp corners (`--lines`)
+
+Finds runs of an outline that are straight to within 0.35 px and do not bow
+to one side (so large circles stay round), and replaces runs of 8 px or more
+with exact lines. Where two lines meet across a small rounded stub at a real
+angle, both are extended to their intersection: a sharp corner. The curves
+between lines are kept exactly as fitted. Code: `crates/vtracer/src/lines.rs`.
+
+Curve passes (`--simplify`, `--lines`) work in **source pixels**, whatever
+scale snap mode traced at, so `--simplify 0.25` means the same on every
+image.
+
 ### Crop (`--crop[=PADDING]`)
 
 Trims the canvas to the drawing's exact bounds, like svgcrop.com but measured

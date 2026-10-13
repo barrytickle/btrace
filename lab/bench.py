@@ -27,7 +27,8 @@ CONFIGS = {
     "watershed": ["--clustering", "watershed", "--hierarchical", "cutout"],
     "max4": ["--max-colors", "4", "--hierarchical", "cutout"],
     "palette": ["--palette", "#1a2a6c,#f4f4f6,#f7a21b", "--hierarchical", "cutout"],
-    "snap": ["--clustering", "snap", "--hierarchical", "cutout", "--simplify", "2"],
+    "snap": ["--clustering", "snap", "--hierarchical", "cutout", "--simplify", "0.25"],
+    "snap+lines": ["--clustering", "snap", "--hierarchical", "cutout", "--simplify", "0.25", "--lines"],
 }
 # Optional extra configs from env, e.g. BENCH_ONLY=default,max4
 ONLY = os.environ.get("BENCH_ONLY")

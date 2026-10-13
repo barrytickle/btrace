@@ -7,7 +7,7 @@
 //! both sides.
 
 use crate::ir::{MultiPath, PathCmd, Shape, SubPath, VectorDoc};
-use crate::simplify::CurvePass;
+use crate::simplify::{apply_passes, CurvePass};
 use visioncortex::PointF64;
 
 use super::face::{assemble, Contour, Face};
@@ -44,15 +44,14 @@ pub fn compose_mosaic(
         .iter()
         .map(|s| {
             let ring = s.is_ring();
-            let mut geom = if ring {
+            let geom = if ring {
                 fitter.fit_ring(s).geom
             } else {
                 fitter.fit_open(s).geom
             };
-            for pass in passes {
-                geom = if ring { pass.ring(geom) } else { pass.open(geom) };
+            FittedSegment {
+                geom: apply_passes(passes, geom, ring, seg.scale),
             }
-            FittedSegment { geom }
         })
         .collect();
 

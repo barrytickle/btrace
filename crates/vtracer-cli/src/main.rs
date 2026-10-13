@@ -154,6 +154,11 @@ struct Args {
     /// (`--crop` or `--crop=4`).
     #[arg(long, value_name = "PADDING", num_args = 0..=1, default_missing_value = "0")]
     crop: Option<f64>,
+
+    /// Detect straight edges and make them exact lines, with sharp corners
+    /// where lines meet (spline mode).
+    #[arg(long)]
+    lines: bool,
 }
 
 fn parse_point(s: &str, whole_color: bool) -> Result<Removal, String> {
@@ -289,6 +294,7 @@ fn build_config(args: &Args) -> Result<Config, String> {
     }
     config.remove_background = args.remove_background;
     config.crop = args.crop;
+    config.lines = args.lines;
 
     // Palette: inline flag wins over file; both parse to a color list.
     if let Some(text) = &args.palette {
