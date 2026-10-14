@@ -23,6 +23,7 @@ const MENUS = [
   ["View", [
     ["tool:compare", "Compare with original", "V"],
     ["tool:preview", "Preview the SVG", "P"],
+    ["tool:original", "Original only"],
     ["outlines", "Outlines", "O"],
     ["bounds", "Bounds and empty space", "B"],
     "-",

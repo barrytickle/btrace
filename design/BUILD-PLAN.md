@@ -17,6 +17,14 @@ Next: build it for real in the app, under the name **PixPath**.
    old UI. Centre + Bounds ship as part of it.
 2. **The name PixPath is clear** (Barry checked). The Λ logo stays.
 
+## Progress (2026-10-14)
+
+Stages 1-8 are built and tested locally (not released): rename, new app
+structure, engine analysis, Fully automatic with "What PixPath did",
+Guided, Review (one removal history, Trim as a snapshot button, stray
+shapes), batch routes and batch review, viewer basics. Next: try it on
+real work, then release v0.3.0 and test the update from Btrace 0.2.0.
+
 ## Build stages
 
 Stages are committed and tested locally; the first release is the whole

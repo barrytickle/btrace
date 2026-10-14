@@ -53,7 +53,7 @@ export const S = {
   image: null, // { name, blob, url, width, height }
   analysis: null, // what the engine noticed about the image
   settings: defaultSettings(),
-  removals: [], // clicked points: { x, y, wholeColor } in image px
+  removals: [], // removal history, oldest first: { kind, points, label } (see removalPoints)
   recolor: {}, // palette edits: { "#rrggbb" (traced): "#rrggbb" (shown) }
   trimBounds: null, // the drawing's extent when last trimmed (image px)
   trimPending: false, // take a new trim snapshot from the next trace
@@ -65,11 +65,40 @@ export const S = {
   analysing: false,
   first: null, // the first trace of the image, for "What PixPath noticed"
   view: { tool: "compare", split: 0.5, outlines: false, bounds: false },
-  batch: null, // { items: [...] } while a batch is open
+  autoUndo: {}, // Fully automatic: which decisions were undone
+  batch: null, // { items, route, ... } while a batch is open
+  batchCtx: null, // working on batch images: { mode: "each" | "same" | "edit", index }
 };
 
+// ---- removals ------------------------------------------------------------------
+//
+// One history for everything taken out in Review: clicked shapes, every shape
+// of a colour, tiny stray shapes, and the background. Undo takes back the
+// last entry, whatever it was. Entries:
+//   { kind: "click", points: [{ x, y, wholeColor }] }
+//   { kind: "strays", points: [...] }
+//   { kind: "background" }  (switches settings.removeBg on; undo switches it off)
+
+/// The engine's removal points for a history.
+export function removalPoints(history = S.removals) {
+  return history.flatMap((r) => r.points ?? []);
+}
+
+/// Tiny stray shapes in trace `result` worth offering to remove, as removal
+/// points. Only for logos and line art: in an illustration, small lone
+/// shapes are usually details (a leaf tip, a star), not noise.
+export function straysOf(result, settings = S.settings) {
+  if (!result || !["logo", "bw"].includes(settings.type)) return [];
+  return (result.strays ?? []).map(([x, y]) => ({ x, y, wholeColor: false }));
+}
+
+/// How many things a history has removed (a stray entry counts each shape).
+export function removalCount(history = S.removals) {
+  return history.reduce((n, r) => n + (r.kind === "background" ? 1 : r.points.length), 0);
+}
+
 /// Engine options for `settings` (+ removals). `crop` traces the saved file.
-export function options(settings = S.settings, removals = S.removals, crop = false) {
+export function options(settings = S.settings, removals = removalPoints(), crop = false) {
   const s = settings;
   const o = {
     hierarchical: s.noOverlap ? "cutout" : "stacked",
@@ -95,7 +124,7 @@ export function options(settings = S.settings, removals = S.removals, crop = fal
 
 /// The options for a batch image's saved file, or null when it isn't trimmed.
 /// (The open image is trimmed from a snapshot instead; see savedSvg.)
-export function croppedOptions(settings = S.settings, removals = S.removals) {
+export function croppedOptions(settings = S.settings, removals = removalPoints()) {
   return settings.trim ? options(settings, removals, true) : null;
 }
 
@@ -118,11 +147,11 @@ export function trimCanvas(b, pad = S.settings.pad) {
 }
 
 /// The saved SVG's canvas in image px: the whole image, or the trim.
-export function savedCanvas() {
-  const w = S.image?.width || 1;
-  const h = S.image?.height || 1;
-  if (!S.settings.trim || !S.trimBounds) return { x: 0, y: 0, w, h };
-  return trimCanvas(S.trimBounds);
+export function savedCanvas(st = S) {
+  const w = st.image?.width || st.width || 1;
+  const h = st.image?.height || st.height || 1;
+  if (!st.settings.trim || !st.trimBounds) return { x: 0, y: 0, w, h };
+  return trimCanvas(st.trimBounds, st.settings.pad);
 }
 
 /// Whether trimming the current drawing would change the canvas at all.
@@ -152,8 +181,8 @@ function cropSvg(svg, c) {
 }
 
 /// `svg` with palette edits applied.
-export function recolored(svg) {
-  const edits = Object.entries(S.recolor).filter(([a, b]) => a.toLowerCase() !== b.toLowerCase());
+export function recolored(svg, recolor = S.recolor) {
+  const edits = Object.entries(recolor).filter(([a, b]) => a.toLowerCase() !== b.toLowerCase());
   if (!edits.length) return svg;
   const map = new Map(edits.map(([a, b]) => [a.toLowerCase(), b]));
   return svg.replace(/#[0-9a-fA-F]{6}\b/g, (hex) => map.get(hex.toLowerCase()) ?? hex);
@@ -164,9 +193,10 @@ export function shownSvg() {
   return S.result ? recolored(S.result.svg) : "";
 }
 
-/// The SVG as it will be saved: trimmed (if on) and recoloured.
-export function savedSvg() {
-  if (!S.result) return "";
-  const svg = recolored(S.result.svg);
-  return S.settings.trim && S.trimBounds ? cropSvg(svg, savedCanvas()) : svg;
+/// The SVG as it will be saved: trimmed (if on) and recoloured. `st` is the
+/// open image (S) or a batch image, which keeps the same fields.
+export function savedSvg(st = S) {
+  if (!st.result) return "";
+  const svg = recolored(st.result.svg, st.recolor ?? {});
+  return st.settings.trim && st.trimBounds ? cropSvg(svg, savedCanvas(st)) : svg;
 }

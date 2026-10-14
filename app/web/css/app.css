@@ -375,6 +375,8 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 .stage .zoombar { left: 14px; bottom: 14px; z-index: 2; align-items: center; }
 .zoombar button { cursor: pointer; border-radius: 6px; }
 .zoombar button:hover { background: var(--sunk); color: var(--ink); }
+.zoombar button.on { background: var(--accent-soft); color: var(--ink); }
+.mode[disabled] { opacity: .55; cursor: progress; }
 .zoombar .pct { min-width: 46px; text-align: center; font: 12px var(--mono); }
 .stage .analysing { z-index: 3; gap: 10px; grid-auto-flow: column; }
 .stage .dropzone.over, .stage.over .dropzone { border-color: var(--accent); background: var(--accent-soft); }

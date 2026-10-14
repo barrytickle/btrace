@@ -13,7 +13,7 @@
 
 use visioncortex::PointF64;
 
-use crate::ir::{MultiPath, PathCmd, SubPath, VectorDoc};
+use crate::ir::{MultiPath, PathCmd, Shape, SubPath, VectorDoc};
 
 /// An optimizer pass rewrites the document in place.
 pub trait OptimizerPass {
@@ -213,38 +213,209 @@ pub struct CropPass {
 
 /// Exact bounds of a document's geometry: (min, max), or `None` if empty.
 pub fn bounds(doc: &VectorDoc) -> Option<(PointF64, PointF64)> {
+    doc.shapes.iter().filter_map(shape_bounds).reduce(union)
+}
+
+/// Exact bounds of one shape (a blurred edge counts by its visible spread).
+pub fn shape_bounds(shape: &Shape) -> Option<(PointF64, PointF64)> {
+    // A blurred edge spreads visibly about 3 sigma beyond the path.
+    let spread = 3.0 * shape.paint.blur();
+    shape.path.subpaths.iter().filter_map(|sub| subpath_bounds(sub, spread)).reduce(union)
+}
+
+fn union((a, b): (PointF64, PointF64), (c, d): (PointF64, PointF64)) -> (PointF64, PointF64) {
+    (PointF64 { x: a.x.min(c.x), y: a.y.min(c.y) }, PointF64 { x: b.x.max(d.x), y: b.y.max(d.y) })
+}
+
+/// Exact bounds of one outline, grown by `spread` on every side.
+fn subpath_bounds(sub: &SubPath, spread: f64) -> Option<(PointF64, PointF64)> {
     let mut min = PointF64 { x: f64::INFINITY, y: f64::INFINITY };
     let mut max = PointF64 { x: f64::NEG_INFINITY, y: f64::NEG_INFINITY };
-    for shape in &doc.shapes {
-        // A blurred edge spreads visibly about 3 sigma beyond the path.
-        let spread = 3.0 * shape.paint.blur();
-        let mut add = |p: PointF64| {
-            min.x = min.x.min(p.x - spread);
-            min.y = min.y.min(p.y - spread);
-            max.x = max.x.max(p.x + spread);
-            max.y = max.y.max(p.y + spread);
-        };
-        for sub in &shape.path.subpaths {
-            let mut cur = PointF64::default();
-            for cmd in &sub.commands {
-                match *cmd {
-                    PathCmd::MoveTo(p) | PathCmd::LineTo(p) => {
-                        add(p);
-                        cur = p;
+    let mut add = |p: PointF64| {
+        min.x = min.x.min(p.x - spread);
+        min.y = min.y.min(p.y - spread);
+        max.x = max.x.max(p.x + spread);
+        max.y = max.y.max(p.y + spread);
+    };
+    let mut cur = PointF64::default();
+    for cmd in &sub.commands {
+        match *cmd {
+            PathCmd::MoveTo(p) | PathCmd::LineTo(p) => {
+                add(p);
+                cur = p;
+            }
+            PathCmd::CubicTo(c1, c2, e) => {
+                add(e);
+                for t in cubic_extrema(cur, c1, c2, e) {
+                    add(cubic_at(cur, c1, c2, e, t));
+                }
+                cur = e;
+            }
+            PathCmd::Close => {}
+        }
+    }
+    (min.x <= max.x).then_some((min, max))
+}
+
+/// Largest side of a stray shape, as a share of the canvas's shorter side.
+const STRAY_SIZE: f64 = 0.04;
+/// A shape this close (share of the shorter side) to another of its colour
+/// belongs with it: the dot of an "i", a full stop after a word.
+const STRAY_GAP: f64 = 0.025;
+
+/// Tiny shapes with no other shape of their colour nearby: the specks a
+/// compressed or scanned image leaves behind. Returns a point inside each
+/// (its centre), in canvas px, ready to use as a removal click.
+pub fn strays(doc: &VectorDoc) -> Vec<PointF64> {
+    let short = doc.width.min(doc.height) as f64;
+    let max_side = (STRAY_SIZE * short).max(2.0);
+    let gap = (STRAY_GAP * short).max(3.0);
+    // Judge each outline on its own: shapes of one colour are often merged
+    // into one path, so a speck can share a shape with the logo it's near.
+    struct Piece<'a> {
+        sub: &'a SubPath,
+        shape: usize,
+        color: visioncortex::Color,
+        blurred: bool,
+        bounds: (PointF64, PointF64),
+        outline: Vec<PointF64>,
+    }
+    let pieces: Vec<Piece> = doc
+        .shapes
+        .iter()
+        .enumerate()
+        .flat_map(|(k, shape)| {
+            shape.path.subpaths.iter().filter_map(move |sub| {
+                subpath_bounds(sub, 0.0).map(|bounds| Piece {
+                    sub,
+                    shape: k,
+                    color: shape.paint.color(),
+                    blurred: shape.paint.blur() > 0.0,
+                    bounds,
+                    outline: flatten(sub),
+                })
+            })
+        })
+        .collect();
+    let mut out = Vec::new();
+    for (i, p) in pieces.iter().enumerate() {
+        let (a, z) = p.bounds;
+        if p.blurred || (z.x - a.x).max(z.y - a.y) > max_side {
+            continue;
+        }
+        let centre = PointF64 { x: (a.x + z.x) / 2.0, y: (a.y + z.y) / 2.0 };
+        // The removal click must land on the speck itself.
+        if !inside(&p.outline, centre) {
+            continue;
+        }
+        // A hole (an outline inside another outline of its own shape) is a
+        // gap in that shape, not a shape of its own: never a stray.
+        let hole = pieces.iter().enumerate().any(|(j, o)| {
+            j != i && o.shape == p.shape && box_gap(p.bounds, o.bounds) == 0.0 && inside(&o.outline, centre)
+        });
+        if hole {
+            continue;
+        }
+        let radius = (z.x - a.x).max(z.y - a.y) / 2.0;
+        // Near another outline of its colour: within `gap` of the outline
+        // itself (a box check alone would call a speck in the corner of a
+        // circle's bounding box "near"). Holes are near their own outer edge.
+        let near = pieces.iter().enumerate().any(|(j, o)| {
+            j != i
+                && o.color == p.color
+                && box_gap(p.bounds, o.bounds) <= gap
+                && outline_distance(o.sub, centre) - radius <= gap
+        });
+        if !near {
+            out.push(centre);
+        }
+    }
+    out
+}
+
+/// Distance from `p` to an outline: exact along straight edges, curves
+/// split into short straight pieces.
+fn outline_distance(sub: &SubPath, p: PointF64) -> f64 {
+    let mut best = f64::INFINITY;
+    let mut edge = |a: PointF64, b: PointF64| best = best.min(segment_distance(p, a, b));
+    {
+        let mut cur = PointF64::default();
+        let mut start = cur;
+        for cmd in &sub.commands {
+            match *cmd {
+                PathCmd::MoveTo(q) => {
+                    cur = q;
+                    start = q;
+                }
+                PathCmd::LineTo(q) => {
+                    edge(cur, q);
+                    cur = q;
+                }
+                PathCmd::CubicTo(c1, c2, e) => {
+                    let mut prev = cur;
+                    for k in 1..=16 {
+                        let q = cubic_at(cur, c1, c2, e, k as f64 / 16.0);
+                        edge(prev, q);
+                        prev = q;
                     }
-                    PathCmd::CubicTo(c1, c2, e) => {
-                        add(e);
-                        for t in cubic_extrema(cur, c1, c2, e) {
-                            add(cubic_at(cur, c1, c2, e, t));
-                        }
-                        cur = e;
-                    }
-                    PathCmd::Close => {}
+                    cur = e;
+                }
+                PathCmd::Close => {
+                    edge(cur, start);
+                    cur = start;
                 }
             }
         }
     }
-    (min.x <= max.x).then_some((min, max))
+    best
+}
+
+/// An outline as a polygon: straight edges kept, curves split into 16.
+fn flatten(sub: &SubPath) -> Vec<PointF64> {
+    let mut out = Vec::new();
+    let mut cur = PointF64::default();
+    for cmd in &sub.commands {
+        match *cmd {
+            PathCmd::MoveTo(q) | PathCmd::LineTo(q) => {
+                out.push(q);
+                cur = q;
+            }
+            PathCmd::CubicTo(c1, c2, e) => {
+                out.extend((1..=16).map(|k| cubic_at(cur, c1, c2, e, k as f64 / 16.0)));
+                cur = e;
+            }
+            PathCmd::Close => {}
+        }
+    }
+    out
+}
+
+/// Whether `p` is inside polygon `poly` (even-odd).
+fn inside(poly: &[PointF64], p: PointF64) -> bool {
+    let mut odd = false;
+    for (i, a) in poly.iter().enumerate() {
+        let b = poly[(i + 1) % poly.len()];
+        if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) * (b.x - a.x) / (b.y - a.y) {
+            odd = !odd;
+        }
+    }
+    odd
+}
+
+/// Distance from `p` to the segment `a`-`b`.
+fn segment_distance(p: PointF64, a: PointF64, b: PointF64) -> f64 {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 > 0.0 { (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
+    let (x, y) = (a.x + t * dx - p.x, a.y + t * dy - p.y);
+    (x * x + y * y).sqrt()
+}
+
+/// Distance between two boxes (0 when they touch or overlap).
+fn box_gap((a, b): (PointF64, PointF64), (c, d): (PointF64, PointF64)) -> f64 {
+    let dx = (c.x - b.x).max(a.x - d.x).max(0.0);
+    let dy = (c.y - b.y).max(a.y - d.y).max(0.0);
+    (dx * dx + dy * dy).sqrt()
 }
 
 fn cubic_at(p0: PointF64, p1: PointF64, p2: PointF64, p3: PointF64, t: f64) -> PointF64 {
@@ -310,7 +481,7 @@ impl OptimizerPass for CropPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{MultiPath, Paint, Shape};
+    use crate::ir::Paint;
     use visioncortex::Color;
 
     fn pt(x: f64, y: f64) -> PointF64 {
@@ -327,6 +498,81 @@ mod tests {
             soft_zone: None,
         });
         doc
+    }
+
+    fn rect(doc: &mut VectorDoc, (x0, y0, x1, y1): (f64, f64, f64, f64), color: Color) {
+        doc.shapes.push(Shape {
+            paint: Paint::Solid(color),
+            path: MultiPath {
+                subpaths: vec![SubPath {
+                    commands: vec![
+                        PathCmd::MoveTo(pt(x0, y0)),
+                        PathCmd::LineTo(pt(x1, y0)),
+                        PathCmd::LineTo(pt(x1, y1)),
+                        PathCmd::LineTo(pt(x0, y1)),
+                        PathCmd::Close,
+                    ],
+                }],
+            },
+            soft_zone: None,
+        });
+    }
+
+    #[test]
+    fn lone_specks_are_strays_but_dots_beside_letters_are_not() {
+        let navy = Color::new(29, 43, 83);
+        let orange = Color::new(242, 140, 40);
+        let mut doc = VectorDoc::new(200, 100);
+        rect(&mut doc, (0.0, 0.0, 200.0, 100.0), Color::new(255, 255, 255));
+        rect(&mut doc, (40.0, 30.0, 60.0, 80.0), navy); // a letter stem
+        rect(&mut doc, (48.0, 24.0, 51.0, 27.0), navy); // its dot, 3 px above
+        rect(&mut doc, (150.0, 10.0, 151.5, 11.5), navy); // a lone speck
+        rect(&mut doc, (100.0, 50.0, 101.0, 51.0), orange); // a lone speck, other colour
+        // A big navy diamond whose bounding box holds a speck in its corner,
+        // far from the diamond itself: still a stray.
+        doc.shapes.push(Shape {
+            paint: Paint::Solid(navy),
+            path: MultiPath {
+                subpaths: vec![SubPath {
+                    commands: vec![
+                        PathCmd::MoveTo(pt(130.0, 50.0)),
+                        PathCmd::LineTo(pt(160.0, 20.0)),
+                        PathCmd::LineTo(pt(190.0, 50.0)),
+                        PathCmd::LineTo(pt(160.0, 80.0)),
+                        PathCmd::Close,
+                    ],
+                }],
+            },
+            soft_zone: None,
+        });
+        rect(&mut doc, (186.0, 76.0, 187.5, 77.5), navy); // in the diamond's box corner
+        // An orange sun with a far-off speck merged into the same shape.
+        rect(&mut doc, (70.0, 60.0, 90.0, 80.0), orange);
+        let speck = SubPath {
+            commands: vec![
+                PathCmd::MoveTo(pt(10.0, 90.0)),
+                PathCmd::LineTo(pt(11.0, 90.0)),
+                PathCmd::LineTo(pt(11.0, 91.0)),
+                PathCmd::Close,
+            ],
+        };
+        doc.shapes.last_mut().unwrap().path.subpaths.push(speck);
+        // A tiny hole in the white background (a gap between two leaves):
+        // part of the background, not a stray.
+        let hole = SubPath {
+            commands: vec![
+                PathCmd::MoveTo(pt(120.0, 90.0)),
+                PathCmd::LineTo(pt(120.0, 92.0)),
+                PathCmd::LineTo(pt(122.0, 92.0)),
+                PathCmd::LineTo(pt(122.0, 90.0)),
+                PathCmd::Close,
+            ],
+        };
+        doc.shapes[0].path.subpaths.push(hole);
+        let found = strays(&doc);
+        assert_eq!(found.len(), 4, "{found:?}");
+        assert!(found.iter().any(|p| (p.x - 150.75).abs() < 1e-9 && (p.y - 10.75).abs() < 1e-9));
+        assert!(found.iter().any(|p| (p.x - 100.5).abs() < 1e-9));
     }
 
     #[test]

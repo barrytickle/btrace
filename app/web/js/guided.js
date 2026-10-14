@@ -5,10 +5,10 @@
 // Steps: 1 Image type · 2 Background · 3 Colours · 4 Details · 5 Review.
 
 import { $, esc, icon } from "./util.js";
-import { S, TYPES, withType, options } from "./state.js";
+import { S, TYPES, withType, options, removalPoints } from "./state.js";
 import * as viewer from "./viewer.js";
 import * as engine from "./engine.js";
-import { hooks, render } from "./screens.js";
+import { hooks, render, finishButtons } from "./screens.js";
 
 const panel = $("panel"), foot = $("foot"), stepper = $("stepper"), stage = $("stage");
 
@@ -36,17 +36,18 @@ export function colourName(hex) {
 
 /// The palette as the colour ladder uses it: every detected colour, most
 /// common first, minus the background when it's being removed.
-export function ladder() {
-  const pal = a().palette;
-  const bg = a().background?.color;
-  const bgIndex = S.settings.removeBg && bg ? pal.findIndex((p) => p.color === bg) : -1;
+export function ladder(st = S) {
+  const an = st.analysis ?? a();
+  const pal = an.palette;
+  const bg = an.background?.color;
+  const bgIndex = st.settings.removeBg && bg ? pal.findIndex((p) => p.color === bg) : -1;
   const visible = pal.map((p, i) => ({ ...p, i })).filter((p) => p.i !== bgIndex);
   // Every colour the engine keeps is a real one (it already drops specks).
   const recommended = Math.max(1, visible.length);
   // The engine keeps the top `maxColors` of the whole palette, background
   // included, so "n visible colours" may need one more.
   const maxColorsFor = (n) => (n >= visible.length ? 0 : visible[n - 1].i + 1);
-  const current = S.settings.maxColors ? visible.filter((p) => p.i < S.settings.maxColors).length : visible.length;
+  const current = st.settings.maxColors ? visible.filter((p) => p.i < st.settings.maxColors).length : visible.length;
   return { visible, recommended, maxColorsFor, current };
 }
 
@@ -101,7 +102,7 @@ function previewFor(removeBg) {
   if (!previews.has(key)) {
     previews.set(key, null);
     engine
-      .traceOnce(S.image.blob, { options: options(settings, S.removals) })
+      .traceOnce(S.image.blob, { options: options(settings, removalPoints()) })
       .then((out) => {
         previews.set(key, URL.createObjectURL(new Blob([out.result.svg], { type: "image/svg+xml" })));
         if (S.screen === "guided" && S.step === 2) render();
@@ -277,7 +278,7 @@ export function guided() {
   foot.innerHTML = `<button class="btn" data-act="guidedPrev">← Back</button>
     <button class="btn ghost" data-act="bounds">${S.view.bounds ? "Hide" : "Show"} bounds</button>
     <div class="spacer"></div>
-    <button class="btn primary" data-act="guidedNext">${k >= 5 ? "Review →" : `Continue to ${esc(STEPS[k - 1].toLowerCase())} →`}</button>`;
+    ${k >= 5 ? finishButtons() : `<button class="btn primary" data-act="guidedNext">Continue to ${esc(STEPS[k - 1].toLowerCase())} →</button>`}`;
 }
 
 /// A new trace: refresh what depends on it (the trim text, the palette).

@@ -40,6 +40,7 @@ const html = `
     <button class="pct" id="vPct" title="Fit to window (0)">100%</button>
     <button id="vIn" title="Zoom in (+)" aria-label="Zoom in">+</button>
     <button id="vFit" title="Centre the picture and fit it to the window (0)">Centre</button>
+    <button id="vLines" title="Show every path's outline as a guide (O)" aria-pressed="false">Outlines</button>
   </div>
   <div class="analysing" id="vBusy" hidden><span class="spinner"></span><span>Analysing your image…</span></div>`;
 
@@ -102,8 +103,8 @@ export function refresh() {
   el("vTools").querySelector('[data-tool="remove"]').hidden = !config.removable;
   el("vTools").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.tool === tool));
   const compare = trace && tool === "compare";
-  vec.hidden = !trace;
-  orig.hidden = trace && tool !== "compare";
+  vec.hidden = !trace || tool === "original";
+  orig.hidden = trace && tool !== "compare" && tool !== "original";
   split.hidden = !compare;
   el("vTagL").hidden = !compare;
   el("vTagR").hidden = !compare;
@@ -114,6 +115,9 @@ export function refresh() {
   else if (trace && tool === "preview" && config.tools) hint = "Your SVG as it will be saved · the grid shows transparency";
   el("vHint").hidden = !hint;
   el("vHint").textContent = hint;
+  el("vLines").hidden = !trace;
+  el("vLines").setAttribute("aria-pressed", S.view.outlines);
+  el("vLines").classList.toggle("on", S.view.outlines);
   updateOutlines();
   updateBounds();
   layout();
@@ -203,6 +207,10 @@ vp.addEventListener("wheel", (e) => {
 el("vIn").onclick = () => zoomBy(1.25);
 el("vOut").onclick = () => zoomBy(0.8);
 el("vPct").onclick = el("vFit").onclick = () => fit();
+el("vLines").onclick = () => {
+  S.view.outlines = !S.view.outlines;
+  refresh();
+};
 new ResizeObserver(() => root.isConnected && (view.fitted ? layout() : fit())).observe(vp);
 
 let spaceHeld = false;
@@ -344,8 +352,8 @@ function updateBounds() {
 }
 
 /// A one-line description of the empty space, for panels.
-export function spaceText() {
-  const m = margins();
+export function spaceText(b = S.result?.bounds) {
+  const m = margins(b);
   if (!m) return "";
   const total = m.top + m.right + m.bottom + m.left;
   if (!total) return "No empty space around the drawing";

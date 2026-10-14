@@ -3,12 +3,13 @@
 // Flow: Start → "How would you like to trace it?" → Automatic / Guided /
 // Advanced → Review → Save. Several images at once make a batch.
 
-import { $, prefs, setStatus, svgName, svgURL, toast } from "./util.js";
-import { S, options, recommendedSettings, savedSvg, trimCanvas, trimIsStale, trimWouldChange, TYPES } from "./state.js";
+import { $, prefs, setStatus, svgName, toast } from "./util.js";
+import { S, options, recommendedSettings, savedSvg, straysOf, trimCanvas, trimIsStale, trimWouldChange } from "./state.js";
 import * as engine from "./engine.js";
 import * as viewer from "./viewer.js";
 import * as screens from "./screens.js";
 import * as recent from "./recent.js";
+import * as batch from "./batch.js";
 import { setEnabled } from "./menu.js";
 import { openDialog, closeDialog, dialogOpen, sendReport, links } from "./dialogs.js";
 import { copyText, desktop, quietUpdateCheck, saveAll, saveSvg, version } from "./desktop.js";
@@ -39,7 +40,7 @@ screens.hooks.recolored = () => viewer.setTrace();
 engine.setResultHandler((result, _cropped, ms) => {
   Object.assign(S, { result, ms });
   if (S.analysing) {
-    S.first = result;
+    S.first ??= result;
     S.analysing = false;
     viewer.setBusy(false);
   }
@@ -58,14 +59,18 @@ engine.setResultHandler((result, _cropped, ms) => {
 });
 
 viewer.onRemove((point) => {
-  S.removals = [...S.removals, point];
+  S.removals = [...S.removals, { kind: "click", points: [point] }];
   requestRender();
   toast(point.wholeColor ? "Removed every shape of that colour · Ctrl+Z puts it back" : "Removed · Ctrl+Z puts it back");
 });
 
 // ---- opening images ------------------------------------------------------------------
 
-async function openImage(blob, name) {
+/// Open an image in the main view. `item` is a batch image to edit: its own
+/// analysis, settings, removals, palette edits and trim come with it, and
+/// the view opens at `where` ("mode" or "guided"). A new image starts fresh:
+/// nothing carries over from the last one.
+async function openImage(blob, name, item = null, where = "mode") {
   let px;
   try {
     px = await engine.decode(blob);
@@ -74,18 +79,19 @@ async function openImage(blob, name) {
     return;
   }
   if (S.image) URL.revokeObjectURL(S.image.url);
-  // Per-image state starts fresh: nothing carries over from the last image.
+  if (!item) S.batchCtx = null;
   const image = { name, blob, url: URL.createObjectURL(blob), width: px.width, height: px.height };
   Object.assign(S, {
     image,
-    analysis: null,
-    settings: recommendedSettings(null),
-    removals: [],
-    recolor: {},
-    trimBounds: null,
-    trimPending: true,
-    result: null,
-    first: null,
+    analysis: item?.analysis ?? null,
+    settings: item ? { ...item.settings } : recommendedSettings(null),
+    removals: item ? [...item.removals] : [],
+    recolor: item ? { ...item.recolor } : {},
+    trimBounds: item?.trimBounds ?? null,
+    trimPending: !item,
+    result: item?.result ?? null,
+    first: item?.first ?? null,
+    autoUndo: {},
     analysing: true,
     step: 1,
     pickByHand: false,
@@ -94,16 +100,19 @@ async function openImage(blob, name) {
   viewer.setImage(S.image.url);
   viewer.setTrace();
   document.title = `${name} · PixPath`;
-  go("mode");
-  recent.add({ name, blob, width: px.width, height: px.height });
+  if (where === "guided") screens.openStep(1);
+  else go(where);
+  if (!item) recent.add({ name, blob, width: px.width, height: px.height });
+  let analysis;
   try {
-    S.analysis = await engine.load(px);
+    analysis = await engine.load(px);
   } catch (e) {
     setStatus(String(e.message || e), "error");
     return;
   }
   if (S.image !== image) return; // another image was opened meanwhile
-  S.settings = recommendedSettings();
+  S.analysis = analysis;
+  if (!item) S.settings = recommendedSettings();
   requestRender();
 }
 
@@ -114,7 +123,7 @@ function openFiles(files, fromFolder = false) {
     return;
   }
   if (images.length === 1 && !fromFolder && !S.batch) openImage(images[0], images[0].name);
-  else addToBatch(images, fromFolder);
+  else batch.start(images, fromFolder);
 }
 
 $("file").onchange = () => {
@@ -169,104 +178,19 @@ async function pasteFromClipboard() {
 }
 window.addEventListener("focus", () => S.screen === "start" && screens.peekClipboard());
 
-// ---- batch -------------------------------------------------------------------------------
-//
-// Every image is traced in turn in a second worker with the settings "Fully
-// automatic" would give it, from its own analysis. Choosing how per batch,
-// and reviewing each image, come later.
+// ---- batch ---------------------------------------------------------------------------------
 
-/// Engine options for every kind of image, with and without its background:
-/// the worker picks one per image once it has analysed it.
-function autoTable() {
-  const table = {};
-  for (const kind of Object.keys(TYPES)) {
-    table[kind] = {};
-    for (const [key, removeBackground] of [["keep", false], ["remove", true]]) {
-      const settings = recommendedSettings({ kind, removeBackground });
-      table[kind][key] = { options: options(settings, []), cropped: options(settings, [], true) };
-    }
-  }
-  return table;
-}
-
-function addToBatch(files, fromFolder) {
-  if (!S.batch) S.batch = { items: [], fromFolder, running: false };
-  for (const f of files) {
-    S.batch.items.push({ name: f.name, blob: f, thumb: URL.createObjectURL(f), status: "waiting", result: null, cropped: null, traceURL: null });
-  }
-  go("batch");
-  pumpBatch();
-}
-
-async function pumpBatch() {
-  const b = S.batch;
-  if (!b || b.running) return;
-  const it = b.items.find((x) => x.status === "waiting");
-  if (!it) return;
-  b.running = true;
-  it.status = "tracing";
-  if (S.screen === "batch") render();
-  try {
-    const out = await engine.traceOnce(it.blob, { auto: autoTable() });
-    Object.assign(it, { status: "done", result: out.result, cropped: out.cropped, traceURL: svgURL((out.cropped ?? out.result).svg) });
-  } catch (e) {
-    if (S.batch !== b) return; // the batch was closed
-    Object.assign(it, { status: "error", error: String(e.message || e) });
-  }
-  b.running = false;
-  if (S.batch !== b) return;
-  if (S.screen === "batch") render();
-  pumpBatch();
-}
+batch.hooks.edit = (item, where) => openImage(item.blob, item.name, item, where);
+batch.hooks.current = () => S;
 
 function closeBatch() {
-  if (!S.batch) return;
-  engine.cancelBatch();
-  for (const it of S.batch.items) {
-    URL.revokeObjectURL(it.thumb);
-    if (it.traceURL) URL.revokeObjectURL(it.traceURL);
-  }
-  S.batch = null;
-}
-
-function removeFromBatch(i) {
-  const b = S.batch;
-  const [it] = b.items.splice(i, 1);
-  URL.revokeObjectURL(it.thumb);
-  if (it.traceURL) URL.revokeObjectURL(it.traceURL);
-  if (it.status === "tracing") {
-    // Restart the worker so the abandoned trace doesn't hold up the rest.
-    engine.cancelBatch();
-    b.running = false;
-  }
-  if (!b.items.length) {
-    closeBatch();
-    go("start");
-    return;
-  }
-  render();
-  pumpBatch();
-}
-
-/// SVG names for the batch, unique within it (logo.png and logo.jpg would
-/// both be logo.svg).
-function batchFiles() {
-  const used = new Set();
-  return S.batch.items
-    .filter((it) => it.status === "done")
-    .map((it) => {
-      const stem = svgName(it.name).slice(0, -4);
-      let name = `${stem}.svg`;
-      for (let k = 2; used.has(name.toLowerCase()); k++) name = `${stem} (${k}).svg`;
-      used.add(name.toLowerCase());
-      return { name, contents: (it.cropped ?? it.result).svg };
-    });
+  batch.close();
 }
 
 // ---- actions --------------------------------------------------------------------------------
 
 async function save() {
-  if (S.screen === "batch") return saveAll(batchFiles());
+  if (S.screen === "batch" || S.screen === "breview") return saveAll(batch.files());
   if (!savedSvg()) return toast("Open an image first");
   await saveSvg(svgName(S.image.name), savedSvg());
 }
@@ -280,15 +204,43 @@ function chooseMode(mode) {
   prefs.set("mode", mode);
   S.from = mode;
   if (mode === "auto") {
-    S.settings = recommendedSettings();
-    S.trimPending = true;
-    requestRender();
-    go("review");
+    applyAutomatic();
+    go("auto");
   } else if (mode === "guided") {
     screens.openStep(1);
   } else {
     go("advanced");
   }
+}
+
+/// Fully automatic: every recommendation, stray shapes removed. Each part
+/// can be undone on its own from "What PixPath did".
+function applyAutomatic() {
+  S.settings = recommendedSettings();
+  S.autoUndo = {};
+  S.recolor = {};
+  const strays = straysOf(S.first);
+  S.removals = strays.length ? [{ kind: "strays", points: strays, auto: true }] : [];
+  S.trimPending = true;
+  requestRender();
+}
+
+function autoUndo(k) {
+  const undone = (S.autoUndo[k] = !S.autoUndo[k]);
+  S.trimPending = true; // off Review, the trim follows the drawing
+  if (k === "bg") S.settings.removeBg = !undone;
+  else if (k === "lines") S.settings.lines = !undone;
+  else if (k === "glow") S.settings.glow = !undone;
+  else if (k === "trim") {
+    S.settings.trim = !undone;
+    S.trimBounds = null;
+    S.trimPending = true;
+  } else if (k === "strays") {
+    const strays = straysOf(S.first);
+    S.removals = undone ? S.removals.filter((r) => !r.auto) : [{ kind: "strays", points: strays, auto: true }, ...S.removals];
+  }
+  requestRender();
+  render();
 }
 
 // ---- trim (Review) ----------------------------------------------------------------------------
@@ -339,7 +291,7 @@ function setTheme() {
   } catch {}
 }
 
-const hasImage = () => !!S.image && ["mode", "guided", "advanced", "review"].includes(S.screen);
+const hasImage = () => !!S.image && ["mode", "auto", "guided", "advanced", "review"].includes(S.screen);
 const hasTrace = () => hasImage() && !!S.result;
 
 const actions = {
@@ -347,15 +299,16 @@ const actions = {
   folder: () => $("folder").click(),
   paste: pasteFromClipboard,
   save,
-  saveAll: () => S.batch && saveAll(batchFiles()),
+  saveAll: () => S.batch && saveAll(batch.files()),
+  ...batch.actions,
   copy,
   start: () => go("start"),
   startOver: () => {
     closeBatch();
     go("start");
   },
-  review: () => go("review"),
-  reviewBack: () => (S.from === "guided" ? screens.openStep(screens.lastStep()) : go(S.from === "advanced" ? "advanced" : "mode")),
+  review: () => (S.screen === "guided" ? screens.openStep(5) : go("review")),
+  reviewBack: () => (S.from === "guided" ? screens.openStep(screens.lastStep()) : go({ advanced: "advanced", auto: "auto" }[S.from] ?? "mode")),
   guidedNext: () => screens.nextStep(),
   guidedPrev: () => screens.prevStep(),
   mode: () => go("mode"),
@@ -377,16 +330,31 @@ const actions = {
     render();
   },
   removeBg: () => {
+    if (S.settings.removeBg) return;
     S.settings.removeBg = true;
+    S.removals = [...S.removals, { kind: "background" }];
+    toast("Removed the background · Ctrl+Z puts it back");
     requestRender();
   },
   undoRemove: () => {
-    if (!S.removals.length) return;
+    const last = S.removals.at(-1);
+    if (!last) return;
     S.removals = S.removals.slice(0, -1);
+    if (last.kind === "background") S.settings.removeBg = false;
+    toast(last.kind === "background" ? "Put the background back" : last.kind === "strays" ? "Put the stray shapes back" : "Put it back");
     requestRender();
   },
   clearRemove: () => {
+    if (S.removals.some((r) => r.kind === "background")) S.settings.removeBg = false;
     S.removals = [];
+    toast("Put everything back");
+    requestRender();
+  },
+  removeStrays: () => {
+    const points = straysOf(S.result);
+    if (!points.length) return;
+    S.removals = [...S.removals, { kind: "strays", points }];
+    toast(`Removed ${points.length} stray shape${points.length === 1 ? "" : "s"} · Ctrl+Z puts them back`);
     requestRender();
   },
   outlines: () => {
@@ -396,7 +364,7 @@ const actions = {
   bounds: () => {
     S.view.bounds = !S.view.bounds;
     viewer.refresh();
-    if (["guided", "advanced", "review"].includes(S.screen)) render();
+    if (["auto", "guided", "advanced", "review"].includes(S.screen)) render();
   },
   fit: () => viewer.fit(),
   zoomIn: () => viewer.zoomBy(1.25),
@@ -409,7 +377,7 @@ const actions = {
 /// Whether a menu item applies right now.
 setEnabled((a) => {
   if (["save", "copy"].includes(a)) return hasTrace() || (a === "save" && S.screen === "batch");
-  if (a === "saveAll") return !!S.batch?.items.some((it) => it.status === "done");
+  if (a === "saveAll") return batch.files().length > 0;
   if (a === "undoRemove" || a === "clearRemove") return hasImage() && S.removals.length > 0;
   if (a.startsWith("tool:")) return hasTrace() && S.screen !== "mode";
   if (["outlines", "bounds"].includes(a)) return hasTrace();
@@ -426,8 +394,11 @@ function run(a, el) {
     if (r) openImage(r.blob, r.name);
     return;
   }
-  if (a.startsWith("batchRemove:")) return removeFromBatch(+a.slice(12));
+
   if (a.startsWith("step:")) return screens.openStep(+a.slice(5));
+  if (a.startsWith("autoUndo:")) return autoUndo(a.slice(9));
+  const colon = a.indexOf(":");
+  if (colon > 0 && batch.run(a.slice(0, colon), a.slice(colon + 1))) return;
   actions[a]?.(el);
 }
 

@@ -69,7 +69,11 @@ onmessage = async (e) => {
 //        or { ..., auto } instead of options/cropped: a table
 //        auto[kind][removeBg ? "remove" : "keep"] = { options, cropped },
 //        picked by this image's own analysis (Fully automatic per image).
-//   out: { type: "traced", id, result, cropped, width, height, analysis, ms }
+//        With `strays: true`, tiny stray shapes are removed too (logos and
+//        line art only; pass `kind` with explicit options).
+//   out: { type: "traced", id, result, cropped, width, height, analysis,
+//          first, strays, ms }: `first` = { bounds, strays } before strays
+//          were removed, `strays` = the removal points used.
 //        or { type: "error", id, message }
 async function traceOnce(msg) {
   const t0 = performance.now();
@@ -85,9 +89,18 @@ async function traceOnce(msg) {
     const { options, cropped: croppedOptions } = msg.auto
       ? msg.auto[analysis.kind][analysis.removeBackground ? "remove" : "keep"]
       : msg;
-    const result = t.render(options);
+    let result = t.render(options);
+    const first = { bounds: result.bounds, strays: result.strays };
+    let strays = [];
+    // Strays only for logos and line art (see straysOf in js/state.js).
+    const kind = msg.auto ? analysis.kind : msg.kind;
+    if (msg.strays && ["logo", "bw"].includes(kind) && result.strays.length) {
+      strays = result.strays.map(([x, y]) => ({ x, y, wholeColor: false }));
+      const remove = [...(options.remove ?? []), ...strays];
+      result = t.render({ ...options, remove });
+    }
     const cropped = croppedOptions ? t.render(croppedOptions) : null;
-    postMessage({ type: "traced", id: msg.id, result, cropped, width, height, analysis, ms: performance.now() - t0 });
+    postMessage({ type: "traced", id: msg.id, result, cropped, width, height, analysis, first, strays, ms: performance.now() - t0 });
   } catch (e) {
     postMessage({ type: "error", id: msg.id, message: String(e) });
   } finally {

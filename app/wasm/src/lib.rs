@@ -61,6 +61,9 @@ struct Rendered {
     /// Exact extent of the drawing, `[min_x, min_y, max_x, max_y]` in canvas
     /// px (glows count by their spread); `None` if nothing was drawn.
     bounds: Option<[f64; 4]>,
+    /// Tiny stray shapes (see `vtracer::optimize::strays`): a point inside
+    /// each, `[x, y]` in canvas px, ready to remove like a click.
+    strays: Vec<[f64; 2]>,
 }
 
 /// A palette colour for JS: `#rrggbb` and its share.
@@ -226,8 +229,10 @@ impl Tracer {
         colors.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
         let bounds = vtracer::optimize::bounds(&doc).map(|(a, b)| [a.x, a.y, b.x, b.y]);
+        let strays = vtracer::optimize::strays(&doc).iter().map(|p| [p.x, p.y]).collect();
         let out = Rendered {
             bounds,
+            strays,
             svg: writer.write(&doc),
             width: doc.width,
             height: doc.height,

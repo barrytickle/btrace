@@ -2,8 +2,9 @@
 // the footer (Back / Next). Buttons carry data-act, handled in main.js.
 
 import { $, esc, formatBytes, icon, plural, prefs } from "./util.js";
-import { S, TYPES, withType, savedCanvas, savedSvg, trimIsStale, trimWouldChange, trimCanvas } from "./state.js";
+import { S, TYPES, withType, savedCanvas, savedSvg, trimIsStale, trimWouldChange, trimCanvas, removalCount, straysOf } from "./state.js";
 import * as wizard from "./guided.js";
+import * as batchUI from "./batch.js";
 import * as viewer from "./viewer.js";
 import * as recent from "./recent.js";
 
@@ -135,7 +136,7 @@ function mode() {
   viewer.mount(stage, { trace: false });
   viewer.setBusy(S.analysing);
   const last = prefs.get("mode");
-  const card = (k, text, rec) => `<button class="mode${last === k ? " picked" : ""}" data-act="mode:${k}"><strong>${MODES[k]}</strong>${rec ? `<span class="rec">Recommended</span>` : last === k ? `<span class="last">Last used</span>` : "<span></span>"}
+  const card = (k, text, rec) => `<button class="mode${last === k ? " picked" : ""}" data-act="mode:${k}" ${S.analysing ? "disabled" : ""}><strong>${MODES[k]}</strong>${rec ? `<span class="rec">Recommended</span>` : last === k ? `<span class="last">Last used</span>` : "<span></span>"}
       <p>${text}</p></button>`;
   panel.innerHTML = `<h2>How would you like to trace it?</h2>
     <div>
@@ -145,7 +146,69 @@ function mode() {
     ${card("auto", "PixPath picks the settings and shows you the result. You can still change anything.", true)}
     ${card("guided", "A few quick questions, each with PixPath's recommendation already picked and a live preview.")}
     ${card("advanced", "Every setting, each explained. For when you know exactly what you want.")}`;
-  foot.innerHTML = `${backButton()}<div class="spacer"></div><span class="note">PixPath remembers your choice for next time.</span>`;
+  foot.innerHTML = `${S.batchCtx ? `<button class="btn" data-act="batchBack">← Back to batch</button>` : backButton()}<div class="spacer"></div><span class="note">PixPath remembers your choice for next time.</span>`;
+}
+
+// ---- Fully automatic: what PixPath did -------------------------------------------------
+
+/// Each decision Automatic made, with whether it can be undone.
+function autoRows() {
+  const an = S.analysis ?? {};
+  const f = S.first;
+  const rows = [];
+  const kindWhy = {
+    logo: "Flat colours with crisp edges",
+    illustration: an.softShare >= 0.02 ? "Flat colours with soft glows" : "Lots of flat colours",
+    detailed: "Shading and gradients, like a photo",
+    bw: "Dark ink on a light page",
+  }[an.kind ?? "logo"];
+  const kindLabel = { logo: "a logo", illustration: "an illustration", detailed: "a photo or detailed art", bw: "a black & white drawing" }[an.kind ?? "logo"];
+  rows.push({ k: "type", label: `Traced as ${kindLabel}`, why: kindWhy, fixed: true, change: 1 });
+  if (an.removeBackground && an.background) {
+    rows.push({ k: "bg", label: `Removed the ${wizard.colourName(an.background.color)} background`, why: "It ran all the way round the border" });
+  }
+  if (f?.bounds && trimWouldChange(f.bounds)) rows.push({ k: "trim", label: "Trimmed the empty space", why: viewer.spaceText(f.bounds) });
+  if (TYPES[S.settings.type].engine === "snap") {
+    const L = wizard.ladder();
+    rows.push({ k: "colours", label: `Kept ${L.current} colour${L.current === 1 ? "" : "s"}`, why: an.nearDuplicates?.length ? "Two look almost alike: change it if they should be one" : "Each is clearly distinct", swatches: L.visible.slice(0, L.current).map((p) => S.recolor[p.color] ?? p.color), fixed: true, change: 3 });
+  }
+  if (TYPES[an.kind ?? "logo"].lines) rows.push({ k: "lines", label: "Straightened lines & sharpened corners", why: "Straight edges come out perfectly straight" });
+  if (S.settings.type === "illustration" && an.softShare >= 0.02) rows.push({ k: "glow", label: "Kept the soft glows soft", why: "Instead of cutting them out with a hard edge" });
+  const strays = straysOf(f).length;
+  if (strays) rows.push({ k: "strays", label: `Removed ${strays} tiny stray shape${strays === 1 ? "" : "s"}`, why: "Specks on their own, not part of the design" });
+  return rows;
+}
+
+function auto() {
+  stepper.hidden = true;
+  viewer.mount(stage, { tools: true, hint: "Drag the divider to compare" });
+  panel.innerHTML = `<h2>Done. Here's what PixPath did</h2>
+    <p class="sub">Undo anything that isn't right; the picture updates straight away.</p>
+    <div class="did">${autoRows().map((r) => {
+      const off = S.autoUndo[r.k];
+      return `<div class="row${off ? " off" : ""}">
+        <span class="ok">${off ? "–" : "✓"}</span>
+        <span><b>${esc(r.label)}</b><small>${esc(r.why)}</small>${r.swatches ? `<span class="swatches" style="margin-top:6px">${r.swatches.map((c) => `<i style="background:${c};width:20px;height:20px;border-radius:5px"></i>`).join("")}</span>` : ""}</span>
+        ${r.fixed ? `<button class="btn ghost" data-act="step:${r.change}">Change</button>` : `<button class="btn ghost" data-act="autoUndo:${r.k}">${off ? "Redo" : "Undo"}</button>`}
+      </div>`;
+    }).join("")}</div>
+    <div class="tip">${icon.bulb}<span>Want a say in each step? <button class="link" data-act="mode:guided">Walk through it guided</button> or <button class="link" data-act="advanced">open Advanced</button>.</span></div>`;
+  foot.innerHTML = `${backButton("mode")}${boundsButton()}<div class="spacer"></div>${finishButtons()}`;
+}
+
+/// The buttons that end an image's settings screens. In a batch they move
+/// through the batch (Review stays one click away); otherwise, on to Review.
+export function finishButtons() {
+  const ctx = S.batchCtx;
+  const review = (label) => `<button class="btn" data-act="review">${label}</button>`;
+  if (!ctx) return `<button class="btn primary" data-act="review">Review →</button>`;
+  const n = S.batch.items.length;
+  if (ctx.mode === "each") {
+    const last = ctx.index + 1 >= n;
+    return `${review("Review this image")}<button class="btn primary" data-act="batchNext">${last ? "Finish · review the batch →" : `Next image (${ctx.index + 2} of ${n}) →`}</button>`;
+  }
+  if (ctx.mode === "same") return `${review("Review first")}<button class="btn primary" data-act="batchApplyAll">Apply to all ${n} →</button>`;
+  return `${review("Review this image")}<button class="btn primary" data-act="batchDone">Done · back to batch review →</button>`;
 }
 
 // ---- Advanced ------------------------------------------------------------------------
@@ -207,7 +270,7 @@ function advanced() {
       ${toggle("lines")}
       ${toggle("noOverlap")}
     </div>`;
-  foot.innerHTML = `${backButton("mode")}${boundsButton()}<div class="spacer"></div><button class="btn primary" data-act="review">Review →</button>`;
+  foot.innerHTML = `${backButton("mode")}${boundsButton()}<div class="spacer"></div>${finishButtons()}`;
   advancedTraced();
 }
 
@@ -291,7 +354,9 @@ function review() {
   }
   const c = savedCanvas();
   const kb = formatBytes(new Blob([savedSvg()]).size);
-  const removed = S.removals.length;
+  const removed = removalCount();
+  const byHand = S.removals.some((r) => r.kind === "click");
+  const strays = straysOf(r).length;
   const an = S.analysis;
   const row = (title, what, step) => `<div class="row"><span class="ok">✓</span><span><b>${title}</b><small>${what}</small></span><button class="btn ghost" data-act="step:${step}">Change</button></div>`;
   const engine = TYPES[s.type].engine;
@@ -305,57 +370,37 @@ function review() {
       <div class="fact"><b>${kb.replace(/ \w+$/, "")}</b><small>${kb.split(" ")[1]} file</small></div>
     </div>
     <div class="eyebrow">Clean up</div>
-    ${!s.removeBg && an?.background && !removed ? `<div class="why">${icon.spark}<span>The <b>${bgName}</b> around the edge can go: <button class="link" data-act="removeBg">remove it</button>, or click it with <b>Remove</b> on the toolbar.</span></div>` : ""}
+    ${strays ? `<div class="why">${icon.spark}<span>Found <b>${strays} tiny stray shape${strays === 1 ? "" : "s"}</b>, specks on their own that aren't part of the design. <button class="link" data-act="removeStrays">Remove ${strays === 1 ? "it" : "them"}</button></span></div>` : ""}
+    ${!s.removeBg && an?.background && !byHand ? `<div class="why">${icon.spark}<span>The <b>${bgName}</b> around the edge can go: <button class="link" data-act="removeBg">remove it</button>, or click it with <b>Remove</b> on the toolbar.</span></div>` : ""}
     ${trimRow()}
     <div class="tip">${icon.bulb}<span>To remove anything, choose <b>Remove</b> on the picture's toolbar and click it, background included. Shift-click removes every shape of that colour.</span></div>
     ${removed ? `<div class="tally">${removed} removed <button class="btn" data-act="undoRemove">Undo</button><button class="btn" data-act="clearRemove">Clear</button></div>` : ""}
     <div class="eyebrow">Your choices</div>
     <div class="did">
       ${row(TYPES[s.type].label, "Image type", 1)}
-      ${row(s.removeBg ? "Background removed" : removed ? "Parts removed by hand" : "Background kept", "Background", 2)}
+      ${row(s.removeBg ? "Background removed" : byHand ? "Parts removed by hand" : "Background kept", "Background", 2)}
       ${engine === "snap" ? row(`${wizard.ladder().current} colour${wizard.ladder().current === 1 ? "" : "s"}${Object.keys(S.recolor).length ? ", recoloured" : ""}`, "Colours", 3) : ""}
       ${row(s.lines ? "Straight lines & sharp corners" : "Curves left as traced", s.glow && engine === "snap" ? "Details · glows kept soft" : "Details", 4)}
     </div>
     <div class="tip">${icon.bulb}<span>Made with ${MODES[S.from] ?? "Advanced"}. <b>Change</b> opens that question, then comes back here. Need every setting? <button class="link" data-act="advanced">Open Advanced</button>.</span></div>`;
-  foot.innerHTML = `${backButton("reviewBack")}${boundsButton("empty space")}<div class="spacer"></div>
-    <button class="btn" data-act="copy">Copy SVG</button><button class="btn primary" data-act="save">Save SVG</button>`;
-}
-
-// ---- Batch -----------------------------------------------------------------------------
-
-function batch() {
-  stepper.hidden = true;
-  const b = S.batch;
-  const n = b.items.length;
-  const done = b.items.filter((it) => it.status === "done").length;
-  const failed = b.items.filter((it) => it.status === "error").length;
-  stage.className = "stage list";
-  stage.innerHTML = `<div class="batchlist">
-      <div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-family:var(--display);font-size:20px">${plural(n, "image")}</b><span style="color:var(--ink-2);font-size:14px">${done} of ${n} traced${failed ? ` · ${failed} failed` : ""}</span></div>
-      <div class="progress"><div style="width:${(100 * (done + failed)) / n}%"></div></div>
-      ${b.items.map((it, i) => {
-        const st = { done: ["done", "Done"], tracing: ["run", "Tracing…"], error: ["", "Couldn't trace"], waiting: ["", "Waiting"] }[it.status];
-        const what = it.status === "done" ? `${plural(it.result.colors.length, "colour")} · ${it.cropped && (it.cropped.width < it.result.width || it.cropped.height < it.result.height) ? `trimmed to ${it.cropped.width} × ${it.cropped.height}` : "nothing to trim"}` : it.status === "error" ? esc(it.error) : "Automatic";
-        return `<div class="bfile${it.status === "error" ? " err" : ""}"><span class="th checker"><img src="${it.traceURL ?? it.thumb}" alt=""></span>
-          <span><b>${esc(it.name)}</b><small>${what}</small></span>
-          <span class="state ${st[0]}">${st[1]}</span><button class="btn ghost small" data-act="batchRemove:${i}" title="Leave this image out" aria-label="Leave ${esc(it.name)} out">×</button></div>`;
-      }).join("")}
-    </div>`;
-  panel.innerHTML = `<h2>Batch: ${plural(n, "image")}</h2>
-    <p class="sub">${b.fromFolder ? "Every image in the folder" : "You opened several images, so PixPath made a batch. Each one"} is traced automatically, the same way <b>Fully automatic</b> would trace it on its own.</p>
-    <div class="tip">${icon.bulb}<span>Files are named after the originals (logo.png → logo.svg) and never overwrite anything in the folder you pick.</span></div>
-    <button class="btn" data-act="open">Add more images…</button>`;
-  foot.innerHTML = `<button class="btn" data-act="closeBatch">← Back</button><div class="spacer"></div>
-    <button class="btn primary" data-act="saveAll" ${done ? "" : "disabled"}>${done === n ? `Save ${n} to a folder…` : `Save ${done} traced…`}</button>`;
+  const ctx = S.batchCtx;
+  const finish = !ctx
+    ? `<button class="btn" data-act="copy">Copy SVG</button><button class="btn primary" data-act="save">Save SVG</button>`
+    : ctx.mode === "each"
+      ? `<button class="btn primary" data-act="batchNext">${ctx.index + 1 >= S.batch.items.length ? "Finish · review the batch →" : `Next image (${ctx.index + 2} of ${S.batch.items.length}) →`}</button>`
+      : ctx.mode === "same"
+        ? `<button class="btn primary" data-act="batchApplyAll">Apply to all ${S.batch.items.length} →</button>`
+        : `<button class="btn primary" data-act="batchDone">Done · back to batch review →</button>`;
+  foot.innerHTML = `${backButton("reviewBack")}${boundsButton("empty space")}<div class="spacer"></div>${finish}`;
 }
 
 // ---- routing ---------------------------------------------------------------------------
 
-const screens = { start, mode, guided: wizard.guided, advanced, review, batch };
+const screens = { start, mode, auto, guided: wizard.guided, advanced, review, batch: batchUI.batchScreen, breview: batchUI.reviewScreen };
 
 export function render() {
-  $("batchbar").hidden = true;
   screens[S.screen]();
+  batchUI.drawBar();
 }
 
 /// A new trace arrived: refresh whatever on screen depends on it.
@@ -364,4 +409,5 @@ export function traced() {
   else if (S.screen === "review") review();
   else if (S.screen === "advanced") advancedTraced();
   else if (S.screen === "guided") wizard.traced();
+  else if (S.screen === "auto") auto();
 }
