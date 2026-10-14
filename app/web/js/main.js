@@ -112,6 +112,8 @@ async function openImage(blob, name, item = null, where = "mode") {
   }
   if (S.image !== image) return; // another image was opened meanwhile
   S.analysis = analysis;
+  // An engine that sends no analysis is an old copy the browser kept.
+  if (!analysis) setStatus("This window is running old PixPath files. Close it and open PixPath again.", "error");
   if (!item) S.settings = recommendedSettings();
   requestRender();
 }
