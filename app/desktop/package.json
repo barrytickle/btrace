@@ -1,7 +1,7 @@
 {
   "name": "pixpath-desktop",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "PixPath desktop app (Tauri) around app/web.",
   "scripts": {
     "tauri": "tauri",
