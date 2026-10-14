@@ -1,282 +1,50 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PixPath</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314161b'/%3E%3Cpath d='M8 24 L16 7 L24 24' fill='none' stroke='%233ccfb0' stroke-width='3.2' stroke-linejoin='round' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='7' r='2.6' fill='%23f2efe6'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2310a98d'/%3E%3Cpath d='M8 23 L16 9 L24 23' fill='none' stroke='%23fff' stroke-width='3' stroke-linejoin='round' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='9' r='2.6' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    // Theme before first paint: light unless the user picked dark.
+    try { document.documentElement.dataset.theme = localStorage.getItem("pixpath.theme") || "light"; } catch {}
+  </script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8 24 L16 7 L24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="16" cy="7" r="2.6" fill="var(--ink)"/></svg>
-      <span>PixPath</span>
-      <span id="version" class="version" hidden></span>
+  <div class="win" id="win">
+    <header class="chrome">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="var(--accent)"/><path d="M8 23 L16 9 L24 23" fill="none" stroke="var(--accent-ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><circle cx="16" cy="9" r="2.6" fill="var(--accent-ink)"/></svg>
+        PixPath
+      </div>
+      <nav class="menus" id="menus" aria-label="Menu"></nav>
+      <div class="spacer"></div>
+      <span class="status" id="status" aria-live="polite"></span>
+      <div class="update" id="update" role="status">
+        <span id="updateText"></span>
+        <button class="btn primary small" id="updateInstall">Install &amp; restart</button>
+        <button class="btn small" id="updateLater">Later</button>
+      </div>
+      <span class="ver" id="version"></span>
+    </header>
+
+    <div class="batchbar" id="batchbar" hidden></div>
+    <div class="stepper" id="stepper" hidden></div>
+
+    <div class="main">
+      <section class="stage" id="stage" aria-label="Picture"></section>
+      <section class="panel" id="panel" aria-label="Settings"></section>
     </div>
-    <button id="open" class="btn">Open image…</button>
-    <input id="file" type="file" accept="image/*" multiple hidden>
-    <span id="filename" class="filename"></span>
-    <div class="removals" id="removals" role="group" aria-label="Removed shapes" hidden>
-      <span id="removedCount"></span>
-      <button id="undoRemove" class="btn small" title="Put back the last shape you removed (Ctrl+Z)">Undo</button>
-      <button id="clearRemove" class="btn small" title="Put back everything you removed">Clear</button>
-    </div>
-    <div class="spacer"></div>
-    <div class="update" id="update" role="status" hidden>
-      <span id="updateText"></span>
-      <button id="updateInstall" class="btn small primary">Install &amp; restart</button>
-      <button id="updateLater" class="btn small">Later</button>
-    </div>
-    <span id="status" class="status" aria-live="polite"></span>
-    <button id="download" class="btn primary" disabled>Download SVG</button>
-  </header>
 
-  <main class="workspace">
-    <section class="canvas-area" id="canvasArea">
-      <div class="toolbar" role="toolbar" aria-label="Canvas tools">
-        <div class="seg" role="group" aria-label="View">
-          <button data-view="split" class="on" title="Split view: drag the divider (V)">Split</button>
-          <button data-view="trace" title="Trace only">Trace</button>
-          <button data-view="original" title="Original only">Original</button>
-        </div>
-        <div class="seg" role="group" aria-label="Tool">
-          <button data-tool="pan" class="on" title="Pan (H) · scroll to zoom">Pan</button>
-          <button data-tool="remove" title="Remove: click a region · Shift-click removes its whole colour (R)">Remove</button>
-        </div>
-        <div class="seg" role="group" aria-label="Zoom">
-          <button id="zoomOut" title="Zoom out (-)">−</button>
-          <button id="zoomLabel" class="zoom-label" title="Fit to window (0)">100%</button>
-          <button id="zoomIn" title="Zoom in (+)">+</button>
-          <button id="zoomFit" class="fit" title="Centre the image and fit it to the window (0)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg>Centre</button>
-        </div>
-        <div class="seg">
-          <button id="outlines" aria-pressed="false" title="Show every shape's edge as a dashed guide, to inspect the trace. Never part of the SVG (O)">Outlines</button>
-          <button id="boundsBtn" aria-pressed="false" title="Show the SVG's edge and shade the empty space around the drawing (B)">Bounds</button>
-        </div>
-      </div>
+    <footer class="foot" id="foot"></footer>
+  </div>
 
-      <div class="viewport" id="viewport">
-        <div class="stage" id="stage">
-          <img id="original" alt="Original image" draggable="false">
-          <div class="trace-layer" id="traceLayer"><img id="trace" alt="Traced vector" draggable="false"></div>
-          <svg class="bounds-layer" id="boundsLayer" preserveAspectRatio="none" aria-hidden="true" hidden>
-            <defs>
-              <pattern id="hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-                <rect width="3" height="8" fill="rgba(245,185,66,.45)"/>
-              </pattern>
-            </defs>
-            <path id="boundsSpace" fill="url(#hatch)" fill-rule="evenodd"/>
-            <rect id="boundsContent" fill="none" stroke="rgba(245,185,66,.9)" stroke-width="1" vector-effect="non-scaling-stroke"/>
-            <rect id="boundsCanvas" fill="none" stroke="#f5b942" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>
-          </svg>
-          <div class="divider" id="divider" role="slider" aria-label="Split position" tabindex="0"><span></span></div>
-        </div>
-        <div class="empty" id="empty">
-          <div class="drop">
-            <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 32 L24 12 L34 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M10 38 H38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-            <p><strong>Drop images here</strong>, paste one, or <button id="openInline" class="link">browse</button></p>
-            <p class="muted">PNG, JPEG, WebP or GIF. Logos, icons, illustrations and UI art trace best. Drop several at once to trace a whole batch.</p>
-          </div>
-        </div>
-        <div class="hint" id="hint" hidden></div>
-        <div class="badges">
-          <div class="badge" id="guideBadge" hidden>Outlines shown · not part of the SVG</div>
-          <div class="badge amber" id="boundsBadge" hidden></div>
-        </div>
-      </div>
-      <div class="batch" id="batch" role="region" aria-label="Batch" hidden>
-        <div class="batch-head">
-          <strong>Batch</strong>
-          <span id="batchCount" class="muted"></span>
-          <div class="batch-bar"><div id="batchProgress"></div></div>
-          <div class="spacer"></div>
-          <button id="batchAdd" class="btn small" title="Add more images to the batch">Add images…</button>
-          <button id="batchClear" class="btn small" title="Close the batch (nothing is saved)">Clear</button>
-          <button id="batchSave" class="btn small primary" disabled>Save all</button>
-        </div>
-        <div class="batch-strip" id="batchStrip"></div>
-      </div>
-    </section>
+  <input id="file" type="file" accept="image/*" multiple hidden>
+  <input id="folder" type="file" webkitdirectory multiple hidden>
+  <div class="toast" id="toast" role="status"></div>
+  <div class="modal" id="modal" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle" id="dlg"></div></div>
 
-    <aside class="panel" aria-label="Settings">
-      <div class="panel-switch seg wide" role="tablist" aria-label="Settings style">
-        <button role="tab" data-panel="guided" class="on" aria-selected="true">Guided</button>
-        <button role="tab" data-panel="advanced" aria-selected="false">Fine-tune</button>
-      </div>
-
-      <!-- ===== Guided: three questions, live preview ===== -->
-      <div id="guided">
-        <section class="step" data-step="1">
-          <h3><span class="num">1</span> What kind of image is this?</h3>
-          <div class="choices" role="radiogroup" aria-label="Image type">
-            <button class="choice on" data-type="logo" role="radio" aria-checked="true">
-              <strong>Logo or icon</strong>
-              <span>Solid colours, crisp edges, maybe text</span>
-            </button>
-            <button class="choice" data-type="illustration" role="radio" aria-checked="false">
-              <strong>Illustration</strong>
-              <span>Artwork with flat colours; keeps soft glows</span>
-            </button>
-            <button class="choice" data-type="detailed" role="radio" aria-checked="false">
-              <strong>Photo or detailed art</strong>
-              <span>Shading, gradients, lots of colours</span>
-            </button>
-            <button class="choice" data-type="bw" role="radio" aria-checked="false">
-              <strong>Black &amp; white drawing</strong>
-              <span>Line art, sketches, signatures, scans</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="step" data-step="2">
-          <h3><span class="num">2</span> What about the background?</h3>
-          <div class="choices" role="radiogroup" aria-label="Background">
-            <button class="choice on" data-bg="keep" role="radio" aria-checked="true">
-              <strong>Keep it</strong>
-              <span>Everything in the picture becomes part of the SVG</span>
-            </button>
-            <button class="choice" data-bg="auto" role="radio" aria-checked="false">
-              <strong>Remove it</strong>
-              <span>PixPath removes the colour around the edges</span>
-            </button>
-            <button class="choice" data-bg="click" role="radio" aria-checked="false">
-              <strong>Let me click parts away</strong>
-              <span>Click anything on the picture to remove it</span>
-            </button>
-          </div>
-          <label class="check">
-            <input type="checkbox" id="gCrop"> Trim empty space around it
-          </label>
-          <p class="help" id="gClickHelp" hidden>
-            Click a shape on the picture to remove it. Shift-click removes every shape of that colour
-            (handy for backgrounds showing through letters). Undo is in the top bar.
-          </p>
-        </section>
-
-        <section class="step" data-step="3">
-          <h3><span class="num">3</span> <span id="gColourTitle">Colours</span></h3>
-          <div id="gColours">
-            <p class="help" id="gFound">Open an image to see the colours PixPath finds.</p>
-            <div class="swatches big" id="gSwatches"></div>
-            <div class="stepper" id="gStepper" hidden>
-              <span>Number of colours</span>
-              <div class="seg">
-                <button id="gFewer" aria-label="Fewer colours">−</button>
-                <button id="gCount" class="count" title="Back to automatic">Auto</button>
-                <button id="gMore" aria-label="More colours">+</button>
-              </div>
-            </div>
-          </div>
-          <div id="gDetail" hidden>
-            <p class="help">How much detail to keep. More detail means more shapes and a bigger file.</p>
-            <div class="seg wide" role="radiogroup" aria-label="Detail">
-              <button data-detail="low">Less</button>
-              <button data-detail="normal" class="on">Normal</button>
-              <button data-detail="high">More</button>
-            </div>
-          </div>
-          <div id="gBw" hidden>
-            <p class="help">If lines look too thick or are breaking up, adjust the ink level.</p>
-            <div class="seg wide" role="radiogroup" aria-label="Ink">
-              <button data-ink="light">Lighter</button>
-              <button data-ink="normal" class="on">Normal</button>
-              <button data-ink="dark">Bolder</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="step done">
-          <button id="gDownload" class="btn primary big" disabled>Download SVG</button>
-          <p class="help center" id="gSummary">Drag the divider on the picture to compare with the original.</p>
-        </section>
-      </div>
-
-      <!-- ===== Fine-tune: every control, explained ===== -->
-      <div id="advanced" hidden>
-        <section>
-          <h2>Tracing method</h2>
-          <div class="seg wide" role="group" aria-label="Tracing method">
-            <button data-mode="snap" class="on">Flat colour</button>
-            <button data-mode="color">Detailed</button>
-            <button data-mode="bw">B&amp;W</button>
-          </div>
-          <p class="help">Flat colour gives clean shapes in a few solid colours. Detailed keeps shading and gradients as many small shapes. B&amp;W makes everything black or transparent.</p>
-        </section>
-
-        <section data-for="snap">
-          <h2>Colours</h2>
-          <label class="row"><span>Palette size</span><output id="maxColorsOut">Auto</output></label>
-          <input type="range" id="maxColors" min="0" max="16" step="1" value="0" aria-label="Palette size">
-          <p class="help">How many colours the SVG may use. Auto finds the real colours in the image; lower it to merge similar ones.</p>
-          <div class="swatches" id="swatches" aria-label="Colours in the trace"></div>
-          <label class="row"><span>Soft-edge smoothing</span><output id="smoothOut">1.2</output></label>
-          <input type="range" id="smooth" min="0" max="3" step="0.1" value="1.2" aria-label="Soft-edge smoothing">
-          <p class="help">Tidies blurry or glowing edges so they don't come out jagged. Crisp edges are never touched.</p>
-          <label class="check"><input type="checkbox" id="glow"> Soft edges &amp; glows</label>
-          <p class="help">Keeps glows glowing: where the picture fades softly (a moon, a light), the SVG gets a matching soft halo instead of a hard edge.</p>
-        </section>
-
-        <section data-for="color">
-          <h2>Colours</h2>
-          <label class="row"><span>Colour precision</span><output id="precisionOut">6</output></label>
-          <input type="range" id="precision" min="1" max="8" step="1" value="6" aria-label="Colour precision">
-          <p class="help">Higher keeps subtler colour differences apart. Lower merges near-identical colours.</p>
-          <label class="row"><span>Gradient step</span><output id="gradientOut">16</output></label>
-          <input type="range" id="gradient" min="1" max="64" step="1" value="16" aria-label="Gradient step">
-          <p class="help">How finely shading is split into bands. Smaller steps look smoother but make many more shapes.</p>
-        </section>
-
-        <section data-for="bw">
-          <h2>Ink</h2>
-          <label class="row"><span>Threshold</span><output id="thresholdOut">128</output></label>
-          <input type="range" id="threshold" min="1" max="254" step="1" value="128" aria-label="Threshold">
-          <p class="help">How dark a pixel must be to count as ink. Higher catches fainter lines.</p>
-          <label class="check"><input type="checkbox" id="adaptive"> Adaptive (uneven lighting)</label>
-          <p class="help">For photos of paper or scans with shadows: judges ink against its surroundings instead.</p>
-        </section>
-
-        <section>
-          <h2>Shapes</h2>
-          <label class="row"><span>Simplify</span><output id="simplifyOut">0.25 px</output></label>
-          <input type="range" id="simplify" min="0" max="1.5" step="0.05" value="0.25" aria-label="Simplify">
-          <p class="help">How far curves may drift from the image to use fewer points. Higher gives smoother outlines and smaller files.</p>
-          <label class="row"><span>Speckle filter</span><output id="speckleOut">4 px</output></label>
-          <input type="range" id="speckle" min="0" max="32" step="1" value="4" aria-label="Speckle filter">
-          <p class="help">Removes dots and specks smaller than this. Raise it if the trace is full of tiny bits.</p>
-          <label class="check">
-            <input type="checkbox" id="lines" checked> Straight lines &amp; sharp corners
-          </label>
-          <p class="help">Makes straight edges perfectly straight and gives corners a sharp point. Turn off for hand-drawn, organic shapes.</p>
-          <label class="check"><input type="checkbox" id="noOverlap"> Shapes don't overlap</label>
-          <p class="help">For cutting machines (vinyl, laser): each colour becomes its own piece with holes where other colours sit. Normally shapes stack, which looks cleaner and keeps files smaller. Glows need stacking.</p>
-        </section>
-
-        <section>
-          <h2>Background &amp; crop</h2>
-          <label class="check"><input type="checkbox" id="removeBg"> Remove background</label>
-          <p class="help">Removes the colour around the image's border.</p>
-          <p class="help">To remove particular shapes, pick <strong>Remove</strong> in the toolbar and click them. Undo is in the top bar.</p>
-          <label class="check"><input type="checkbox" id="crop"> Crop to content</label>
-          <label class="row indent" id="padRow"><span>Padding</span><output id="padOut">0 px</output></label>
-          <input type="range" class="indent" id="pad" min="0" max="32" step="1" value="0" aria-label="Crop padding">
-          <p class="help">Trims the SVG to the drawing, with optional space around it.</p>
-        </section>
-      </div>
-
-      <section class="stats">
-        <h2>Output</h2>
-        <dl>
-          <div><dt>Shapes</dt><dd id="statShapes">–</dd></div>
-          <div><dt>Colours</dt><dd id="statColors">–</dd></div>
-          <div><dt>Size</dt><dd id="statSize">–</dd></div>
-          <div><dt>Canvas</dt><dd id="statCanvas">–</dd></div>
-          <div><dt>Time</dt><dd id="statTime">–</dd></div>
-        </dl>
-      </section>
-    </aside>
-  </main>
-
-  <script type="module" src="app.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

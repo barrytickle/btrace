@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the PixPath window may do: check for and install updates, restart, and show save dialogs.",
+  "description": "What the PixPath window may do: check for and install updates, restart, show save dialogs, and open web links in the browser.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "updater:default",
     "process:allow-restart",
-    "dialog:default"
+    "dialog:default",
+    "opener:default"
   ]
 }

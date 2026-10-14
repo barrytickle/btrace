@@ -1,6 +1,7 @@
-//! PixPath desktop: the web UI in a native window, plus the two things a
-//! browser page can't do well: a native "Save as" dialog, and auto-updates
-//! from GitHub Releases (driven from the UI via the updater plugin).
+//! PixPath desktop: the web UI in a native window, plus what a browser page
+//! can't do well: native "Save as" dialogs, auto-updates from GitHub Releases
+//! (driven from the UI via the updater plugin), and opening links (Help >
+//! Report a problem) in the default browser.
 
 // No console window behind the app in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -81,6 +82,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![save_svg, save_all])
         .run(tauri::generate_context!())
