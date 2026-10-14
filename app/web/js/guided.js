@@ -17,7 +17,14 @@ const GLOW_SHARE = 0.02;
 
 // ---- what the analysis says ---------------------------------------------------------
 
-const a = () => S.analysis ?? { kind: "logo", palette: [], nearDuplicates: [], softShare: 0, transparentShare: 0, background: null, removeBackground: false };
+/// The analysis, or (if it never arrived) a stand-in built from the trace:
+/// its colours, most used first, so the colour questions still work.
+const a = () => S.analysis ?? fallbackAnalysis(S.result ?? S.first);
+
+function fallbackAnalysis(result) {
+  const palette = (result?.colors ?? []).map((color) => ({ color, share: 1 }));
+  return { kind: "logo", palette, nearDuplicates: [], softShare: 0, transparentShare: 0, background: null, removeBackground: false };
+}
 
 const isTransparent = () => a().transparentShare > 0.01;
 const hasGlow = () => a().softShare >= GLOW_SHARE;
@@ -37,7 +44,7 @@ export function colourName(hex) {
 /// The palette as the colour ladder uses it: every detected colour, most
 /// common first, minus the background when it's being removed.
 export function ladder(st = S) {
-  const an = st.analysis ?? a();
+  const an = st.analysis ?? fallbackAnalysis(st.result ?? st.first);
   const pal = an.palette;
   const bg = an.background?.color;
   const bgIndex = st.settings.removeBg && bg ? pal.findIndex((p) => p.color === bg) : -1;

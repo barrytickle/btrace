@@ -134,8 +134,8 @@ Bounds; split, trace and original views.
 - **Windows PowerShell 5.1** turns native tools' stderr into errors: don't
   use `$ErrorActionPreference = "Stop"` around cargo, git or wasm-pack;
   check `$LASTEXITCODE` instead.
-- **Preview** the web app: `python -m http.server 8765 --directory app/web`,
-  then open http://127.0.0.1:8765.
+- **Preview** the web app: `python app/serve.py` (caching off, so a tab
+  never runs an old worker), then open http://127.0.0.1:8765.
 - **Test images** live in `lab/samples` (git-ignored; third-party logos and
   artwork; never publish them).
 - **Pushing:** `git push origin btrace:main`; never push tags except a

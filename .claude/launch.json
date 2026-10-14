@@ -4,7 +4,10 @@
     {
       "name": "pixpath-app",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "app/web"],
+      "runtimeArgs": [
+        "app/serve.py",
+        "8765"
+      ],
       "port": 8765
     }
   ]

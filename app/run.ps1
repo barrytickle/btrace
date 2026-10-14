@@ -7,4 +7,4 @@ if (-not (Test-Path "$web\pkg\pixpath_wasm_bg.wasm")) {
 }
 $port = 8765
 Start-Process "http://127.0.0.1:$port"
-python -m http.server $port --bind 127.0.0.1 --directory $web
+python "$PSScriptRoot\serve.py" $port
