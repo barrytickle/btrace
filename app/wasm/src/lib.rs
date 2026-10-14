@@ -34,6 +34,7 @@ struct Options {
     snap_glow: Option<bool>,
     lines: Option<bool>,
     remove_background: Option<bool>,
+    even_lighting: Option<bool>,
     remove: Vec<Point>,
     /// Crop padding in px; omit or null for no crop.
     crop: Option<f64>,
@@ -159,6 +160,7 @@ fn config_from(options: JsValue) -> Result<Config, JsValue> {
     c.snap_glow = o.snap_glow.unwrap_or(false);
     c.lines = o.lines.unwrap_or(false);
     c.remove_background = o.remove_background.unwrap_or(false);
+    c.even_lighting = o.even_lighting.unwrap_or(false);
     c.remove = o
         .remove
         .iter()

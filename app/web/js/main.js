@@ -322,7 +322,7 @@ const actions = {
     closeBatch();
     go("start");
   },
-  review: () => (S.screen === "guided" ? screens.openStep(5) : go("review")),
+  review: () => (S.screen === "guided" ? screens.openStep(Infinity) : go("review")),
   reviewBack: () => (S.from === "guided" ? screens.openStep(screens.lastStep()) : go({ advanced: "advanced", auto: "auto" }[S.from] ?? "mode")),
   guidedNext: () => screens.nextStep(),
   guidedPrev: () => screens.prevStep(),

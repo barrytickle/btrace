@@ -96,6 +96,7 @@ pub struct SegmentKey {
     snap_max_colors: usize,
     snap_smooth: f64,
     snap_glow: bool,
+    even_lighting: bool,
 }
 
 /// High-level converter configuration. [`Config::build`] turns this into a
@@ -174,6 +175,9 @@ pub struct Config {
     /// Trim the canvas to the drawing's bounds plus this padding (px).
     /// `None` = keep the source size.
     pub crop: Option<f64>,
+    /// Even out the lighting before clustering, so shadows and uneven light
+    /// don't become shapes of their own (see [`crate::lighting`]).
+    pub even_lighting: bool,
     /// Detect straight runs and replace them with exact lines, sharpening
     /// corners where two lines meet (see [`StraightenLines`]). Spline mode
     /// only; runs after `simplify`.
@@ -209,6 +213,7 @@ impl Default for Config {
             remove: Vec::new(),
             remove_background: false,
             crop: None,
+            even_lighting: false,
             lines: false,
         }
     }
@@ -410,6 +415,7 @@ impl Config {
             snap_max_colors: self.snap(self.max_colors.unwrap_or(0)),
             snap_smooth: self.snap(self.snap_smooth),
             snap_glow: self.snap(self.glow_active()),
+            even_lighting: self.even_lighting,
         }
     }
 

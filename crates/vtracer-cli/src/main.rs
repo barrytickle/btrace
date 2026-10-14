@@ -15,6 +15,10 @@ use vtracer::{Clustering, Config, FitMode, Hierarchical, Preset, Removal};
 #[derive(Parser, Debug)]
 #[command(name = "vtracer", version, about, rename_all = "kebab-case")]
 struct Args {
+    /// Even out the lighting before tracing, so shadows don't become shapes.
+    #[arg(long)]
+    even_lighting: bool,
+
     /// Print what PixPath notices about the image (kind, palette, background)
     /// instead of tracing it. No output file is needed.
     #[arg(long)]
@@ -306,6 +310,7 @@ fn build_config(args: &Args) -> Result<Config, String> {
     config.remove_background = args.remove_background;
     config.crop = args.crop;
     config.lines = args.lines;
+    config.even_lighting = args.even_lighting;
 
     // Palette: inline flag wins over file; both parse to a color list.
     if let Some(text) = &args.palette {
@@ -353,7 +358,10 @@ fn run() -> Result<(), String> {
 
     let config = build_config(&args)?;
     let pipeline = config.build().map_err(|e| e.to_string())?;
-    let img = read_image(input)?;
+    let mut img = read_image(input)?;
+    if config.even_lighting {
+        img = vtracer::lighting::even_out(&img);
+    }
     let svg = pipeline.to_svg(&img).map_err(|e| e.to_string())?;
     std::fs::write(output, svg).map_err(|e| format!("cannot write output file: {e}"))?;
     Ok(())

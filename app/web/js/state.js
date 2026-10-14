@@ -7,7 +7,7 @@
 export const TYPES = {
   logo: { label: "Logo or icon", engine: "snap", smooth: 1.2, lines: true, simplify: 0.25, speckle: 4, glow: false },
   illustration: { label: "Illustration", engine: "snap", smooth: 1.2, lines: true, simplify: 0.35, speckle: 4, glow: true },
-  detailed: { label: "Photo or detailed art", engine: "color", lines: false, simplify: 0.5, speckle: 6, precision: 6, gradient: 16, glow: false },
+  detailed: { label: "Photo or detailed art", engine: "color", lines: false, simplify: 0.5, speckle: 6, precision: 6, gradient: 16, glow: false, maxColors: 32 },
   bw: { label: "Black & white drawing", engine: "bw", lines: true, simplify: 0.3, speckle: 4, threshold: 128, adaptive: false, glow: false },
 };
 
@@ -28,13 +28,14 @@ export function defaultSettings() {
     removeBg: false,
     trim: false,
     pad: 0,
+    evenLighting: false, // photos: even out the lighting before tracing
   };
 }
 
 /// The settings for image type `type`, keeping choices that don't depend on it.
 export function withType(settings, type) {
   const t = TYPES[type];
-  const s = { ...settings, type, maxColors: 0 };
+  const s = { ...settings, type, maxColors: t.maxColors ?? 0, evenLighting: false };
   for (const k of ["smooth", "lines", "simplify", "speckle", "glow", "precision", "gradient", "threshold", "adaptive"]) {
     if (t[k] !== undefined) s[k] = t[k];
   }
@@ -115,7 +116,7 @@ export function options(settings = S.settings, removals = removalPoints(), crop 
   if (engine === "snap") {
     Object.assign(o, { clustering: "snap", maxColors: s.maxColors, snapSmooth: s.smooth, snapGlow: s.glow });
   } else if (engine === "color") {
-    Object.assign(o, { clustering: "color-cluster", colorPrecision: s.precision, layerDifference: s.gradient });
+    Object.assign(o, { clustering: "color-cluster", colorPrecision: s.precision, layerDifference: s.gradient, maxColors: s.maxColors, evenLighting: s.evenLighting });
   } else {
     Object.assign(o, { clustering: "bw", binaryThreshold: s.threshold, adaptive: s.adaptive });
   }

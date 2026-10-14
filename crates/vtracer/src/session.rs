@@ -52,6 +52,9 @@ pub struct Session {
     /// The image's watershed hierarchy, built lazily on the first watershed
     /// render. Parameter-free, so it never goes stale while the image lives.
     hierarchy: Option<WatershedHierarchy>,
+    /// The image with its lighting evened out, made on the first render that
+    /// asks for it (see [`Config::even_lighting`]).
+    evened: Option<ColorImage>,
 }
 
 impl Session {
@@ -61,6 +64,7 @@ impl Session {
             img,
             cache: None,
             hierarchy: None,
+            evened: None,
         }
     }
 
@@ -79,6 +83,10 @@ impl Session {
     /// hierarchy cache (build once, cut cheaply); everything else runs the
     /// pipeline's frontend.
     fn segment(&mut self, cfg: &Config, pipeline: &Pipeline) -> Result<Segmentation, Error> {
+        if cfg.even_lighting {
+            let evened = self.evened.get_or_insert_with(|| crate::lighting::even_out(&self.img));
+            return pipeline.segment(evened);
+        }
         if cfg.clustering == Clustering::Watershed {
             if self.hierarchy.is_none() {
                 self.hierarchy = Some(WatershedHierarchy::build(&self.img)?);
@@ -136,6 +144,9 @@ impl Session {
                 ctx.check()?;
                 ctx.report(Phase::Segment, 1.0);
                 seg
+            } else if cfg.even_lighting {
+                let evened = self.evened.get_or_insert_with(|| crate::lighting::even_out(&self.img));
+                pipeline.segment_with_progress(evened, cancel, on_progress)?
             } else {
                 pipeline.segment_with_progress(&self.img, cancel, on_progress)?
             };
@@ -150,6 +161,7 @@ impl Session {
     pub fn invalidate(&mut self) {
         self.cache = None;
         self.hierarchy = None;
+        self.evened = None;
     }
 
     /// The source image this session renders.

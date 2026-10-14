@@ -2,7 +2,9 @@
 // (from the engine's analysis) and a live preview. Steps with nothing to
 // decide are skipped. Every answer edits the same settings as Advanced.
 //
-// Steps: 1 Image type · 2 Background · 3 Colours · 4 Details · 5 Review.
+// Steps for logos, illustrations and line art: Image type · Background ·
+// Colours · Details · Review. For photos: Image type · Detail · Colours ·
+// Shadows & lighting · Smoothness · Review.
 
 import { $, esc, icon } from "./util.js";
 import { S, TYPES, withType, options, removalPoints } from "./state.js";
@@ -12,7 +14,6 @@ import { hooks, render, finishButtons } from "./screens.js";
 
 const panel = $("panel"), foot = $("foot"), stepper = $("stepper"), stage = $("stage");
 
-const STEPS = ["Image type", "Background", "Colours", "Details", "Review"];
 const GLOW_SHARE = 0.02;
 
 // ---- what the analysis says ---------------------------------------------------------
@@ -59,9 +60,16 @@ export function ladder(st = S) {
   return { visible, recommended, maxColorsFor, current };
 }
 
+/// The questions for the image type chosen (see the top of this file).
+function steps() {
+  return S.settings.type === "detailed" ? PHOTO_STEPS : FLAT_STEPS;
+}
+
+/// Review comes after the last question.
+export const reviewStep = () => steps().length + 1;
+
 function stepSkipped(n) {
-  if (n === 3) return TYPES[S.settings.type].engine !== "snap" || ladder().visible.length < 2;
-  return false;
+  return steps()[n - 1]?.skip?.() ?? false;
 }
 
 function why(text) {
@@ -97,28 +105,51 @@ function edgeArt(kind) {
   return `<svg viewBox="0 0 80 80" aria-hidden="true" style="width:72%;height:72%">${cells.join("")}</svg>`;
 }
 
-// ---- background previews ------------------------------------------------------------
+// ---- previews ----------------------------------------------------------------------
 //
-// The Keep / Remove cards show the real trace both ways, traced in the
-// background worker. Cached per image and settings.
+// Option cards show the real trace with that option, traced in the
+// background worker from a small copy of the image (so a photo's previews
+// take a second, not ten). Cached per image and settings.
 
 const previews = new Map();
+const PREVIEW_PIXELS = 300_000;
 
-function previewFor(removeBg) {
-  const settings = { ...S.settings, removeBg, trim: false };
-  const key = `${S.image.url}|${JSON.stringify(settings)}|${JSON.stringify(S.removals)}`;
+/// A small copy of the open image for previews: { blob, factor }, where
+/// factor = small px per traced px. Made once per image.
+async function smallCopy(image) {
+  if (image.small) return image.small;
+  const [ow, oh] = image.original ?? [image.width, image.height];
+  const k = Math.min(1, Math.sqrt(PREVIEW_PIXELS / (ow * oh)));
+  if (k === 1) return (image.small = { blob: image.blob, factor: ow / image.width });
+  const [w, h] = [Math.max(1, Math.round(ow * k)), Math.max(1, Math.round(oh * k))];
+  const bmp = await createImageBitmap(image.blob, { resizeWidth: w, resizeHeight: h, resizeQuality: "high" });
+  const canvas = new OffscreenCanvas(w, h);
+  canvas.getContext("2d").drawImage(bmp, 0, 0);
+  bmp.close();
+  return (image.small = { blob: await canvas.convertToBlob({ type: "image/png" }), factor: w / image.width });
+}
+
+/// The preview card picture for the current settings with `over` applied.
+/// `zoom` shows a close-up of the middle, where a photo's detail shows.
+function preview(over, zoom = S.settings.type === "detailed") {
+  const settings = { ...S.settings, trim: false, ...over };
+  const image = S.image;
+  const key = `${image.url}|${JSON.stringify(settings)}|${JSON.stringify(S.removals)}`;
   if (!previews.has(key)) {
     previews.set(key, null);
-    engine
-      .traceOnce(S.image.blob, { options: options(settings, removalPoints()) })
+    smallCopy(image)
+      .then(({ blob, factor }) => {
+        const points = removalPoints().map((p) => ({ ...p, x: p.x * factor, y: p.y * factor }));
+        return engine.traceOnce(blob, { options: options(settings, points) });
+      })
       .then((out) => {
         previews.set(key, URL.createObjectURL(new Blob([out.result.svg], { type: "image/svg+xml" })));
-        if (S.screen === "guided" && S.step === 2) render();
+        if (S.screen === "guided" && S.image === image) render();
       })
       .catch(() => previews.delete(key));
   }
   const url = previews.get(key);
-  return url ? `<img src="${url}" alt="">` : `<span class="spinner"></span>`;
+  return url ? `<img src="${url}" alt=""${zoom ? ' class="zoom"' : ""}>` : `<span class="spinner"></span>`;
 }
 
 // ---- the steps ------------------------------------------------------------------------------
@@ -171,9 +202,9 @@ function stepBackground() {
   return `<h2>What about the background?</h2>
     ${why(reason)}
     <div class="opts three">
-      ${card("keep", "Keep it", `The ${name} stays in the SVG`, previewFor(false), false)}
-      ${card("remove", "Remove it", "Transparent behind", previewFor(true), true)}
-      ${card("click", "I'll pick", "Click parts away in Review", previewFor(false), true)}
+      ${card("keep", "Keep it", `The ${name} stays in the SVG`, preview({ removeBg: false }), false)}
+      ${card("remove", "Remove it", "Transparent behind", preview({ removeBg: true }), true)}
+      ${card("click", "I'll pick", "Click parts away in Review", preview({ removeBg: false }), true)}
     </div>
     ${S.settings.removeBg || !bg ? trimToggle : toggle("trim", "Trim the empty space", "Remove the background first; it fills the whole canvas.", false)}`;
 }
@@ -226,13 +257,103 @@ function stepDetails() {
     <div class="tip">${icon.bulb}<span>Questions only appear when they matter: a picture with a glowing moon asks about glows here.</span></div>`;
 }
 
-const BODIES = { 1: stepType, 2: stepBackground, 3: stepColours, 4: stepDetails };
+// ---- photo questions ------------------------------------------------------------------------
+
+const DETAIL = [
+  ["low", 16, "Low", "Fewer, bigger shapes · smallest file"],
+  ["medium", 6, "Medium", "Keeps what you can see, without the specks"],
+  ["high", 2, "High", "Keeps the small details · bigger file"],
+];
+
+function stepPhotoDetail() {
+  const card = ([key, speckle, title, text]) =>
+    opt({ on: S.settings.speckle === speckle, set: "speckle", value: speckle, title, text, preview: preview({ speckle }), rec: key === "medium" });
+  return `<h2>How much detail?</h2>
+    ${why("A photo is full of tiny specks of detail. <b>Medium</b> keeps everything you can see, without thousands of extra shapes.")}
+    <div class="opts three">${DETAIL.map(card).join("")}</div>
+    <div class="tip">${icon.bulb}<span>Detail sets the smallest shape PixPath keeps. Low reads like a painting; High like the photo.</span></div>`;
+}
+
+const PHOTO_COLOURS = [
+  [8, "8 colours", "A bold, poster look"],
+  [16, "16 colours", "Flat, but still lifelike"],
+  [32, "32 colours", "Close to the photo, with a tidy palette"],
+  [64, "64 colours", "Very close to the photo"],
+  [0, "Every shade", "As many colours as the photo has"],
+];
+
+function stepPhotoColours() {
+  const card = ([n, title, text]) =>
+    opt({ on: S.settings.maxColors === n, set: "maxColors", value: n, title, text, preview: preview({ maxColors: n }), rec: n === 32 });
+  return `<h2>How many colours?</h2>
+    ${why("<b>32 colours</b> look almost like the photo, and give the SVG a palette you can edit. Fewer look more like a poster.")}
+    <div class="opts three">${PHOTO_COLOURS.map(card).join("")}</div>
+    <div class="tip">${icon.bulb}<span>For photos the colour count changes the look more than the file size.</span></div>`;
+}
+
+const LIGHT = [
+  ["keep", { evenLighting: false, gradient: 16 }, "Keep shadows", "As they are in the photo"],
+  ["soften", { evenLighting: false, gradient: 40 }, "Soften shadows", "Broader, flatter shading"],
+  ["even", { evenLighting: true, gradient: 16 }, "Even out the lighting", "Shadows mostly disappear"],
+];
+
+function lightChoice() {
+  return S.settings.evenLighting ? "even" : S.settings.gradient >= 32 ? "soften" : "keep";
+}
+
+function stepLight() {
+  const now = lightChoice();
+  const card = ([key, over, title, text]) => opt({ on: now === key, set: "light", value: key, title, text, preview: preview(over), rec: key === "keep" });
+  return `<h2>Shadows and lighting</h2>
+    ${why("Shadows are traced as darker shapes. <b>Keep</b> them for a true-to-life result, <b>soften</b> them for a flatter look, or <b>even out</b> the lighting so they mostly disappear.")}
+    <div class="opts three">${LIGHT.map(card).join("")}</div>
+    <div class="tip">${icon.bulb}<span>Evening out works best on buildings, products and documents. On faces and rounded things it can look flat, so check the preview.</span></div>`;
+}
+
+const SMOOTH = [
+  ["smooth", 1.2, "Smooth", "Simplified, flowing shapes · smaller file"],
+  ["balanced", 0.5, "Balanced", "Smooth edges that still follow the photo"],
+  ["exact", 0.15, "Exact", "Follows every edge closely · bigger file"],
+];
+
+function stepSmooth() {
+  const card = ([key, simplify, title, text]) =>
+    opt({ on: S.settings.simplify === simplify, set: "simplify", value: simplify, title, text, preview: preview({ simplify }), rec: key === "balanced" });
+  return `<h2>How smooth?</h2>
+    ${why("<b>Balanced</b> gives clean, smooth edges that still follow the photo.")}
+    <div class="opts three">${SMOOTH.map(card).join("")}</div>`;
+}
+
+/// Labels for Review's "Your choices" with a photo.
+export function photoChoices() {
+  const s = S.settings;
+  return {
+    detail: DETAIL.find((d) => d[1] === s.speckle)?.[2] ?? "Custom",
+    colours: s.maxColors ? `${s.maxColors} colours` : "Every shade",
+    light: LIGHT.find((l) => l[0] === lightChoice())[2],
+    smooth: SMOOTH.find((m) => m[1] === s.simplify)?.[2] ?? "Custom",
+  };
+}
+
+const FLAT_STEPS = [
+  { name: "Image type", body: stepType },
+  { name: "Background", body: stepBackground, live: true },
+  { name: "Colours", body: stepColours, live: true, skip: () => TYPES[S.settings.type].engine !== "snap" || ladder().visible.length < 2 },
+  { name: "Details", body: stepDetails },
+];
+const PHOTO_STEPS = [
+  { name: "Image type", body: stepType },
+  { name: "Detail", body: stepPhotoDetail },
+  { name: "Colours", body: stepPhotoColours },
+  { name: "Shadows & lighting", body: stepLight },
+  { name: "Smoothness", body: stepSmooth },
+];
 
 // ---- navigation --------------------------------------------------------------------------------
 
 export function drawStepper(active) {
   stepper.hidden = false;
-  stepper.innerHTML = STEPS.map((name, i) => {
+  stepper.innerHTML = [...steps().map((st) => st.name), "Review"].map((name, i) => {
     const n = i + 1;
     const skip = stepSkipped(n);
     const cls = skip ? "skip" : n === active ? "on" : n < active ? "done" : "";
@@ -242,19 +363,19 @@ export function drawStepper(active) {
 
 function next(n, dir) {
   let k = n + dir;
-  while (k >= 1 && k <= 4 && stepSkipped(k)) k += dir;
+  while (k >= 1 && k < reviewStep() && stepSkipped(k)) k += dir;
   return k;
 }
 
 /// The last question before Review.
 export function lastStep() {
-  return next(5, -1);
+  return next(reviewStep(), -1);
 }
 
-/// Open question `n` (5 = Review).
+/// Open question `n` (past the last question = Review).
 export function openStep(n) {
   S.from = "guided";
-  if (n >= 5) {
+  if (n >= reviewStep()) {
     S.screen = "review";
     if (S.pickByHand) S.view.tool = "remove";
     render();
@@ -262,7 +383,7 @@ export function openStep(n) {
   }
   if (stepSkipped(n)) n = next(n, 1);
   S.step = n;
-  S.screen = n >= 5 ? "review" : "guided";
+  S.screen = n >= reviewStep() ? "review" : "guided";
   render();
 }
 
@@ -279,19 +400,21 @@ export function prevStep() {
 }
 
 export function guided() {
+  // Changing the image type can change the questions.
+  if (S.step >= reviewStep()) S.step = lastStep();
   drawStepper(S.step);
   viewer.mount(stage, { tools: true, hint: "Live preview of your choices" });
-  panel.innerHTML = BODIES[S.step]();
+  panel.innerHTML = steps()[S.step - 1].body();
   const k = next(S.step, 1);
   foot.innerHTML = `<button class="btn" data-act="guidedPrev">← Back</button>
     <button class="btn ghost" data-act="bounds">${S.view.bounds ? "Hide" : "Show"} bounds</button>
     <div class="spacer"></div>
-    ${k >= 5 ? finishButtons() : `<button class="btn primary" data-act="guidedNext">Continue to ${esc(STEPS[k - 1].toLowerCase())} →</button>`}`;
+    ${k >= reviewStep() ? finishButtons() : `<button class="btn primary" data-act="guidedNext">Continue to ${esc(steps()[k - 1].name.toLowerCase())} →</button>`}`;
 }
 
 /// A new trace: refresh what depends on it (the trim text, the palette).
 export function traced() {
-  if (S.step === 2 || S.step === 3) panel.innerHTML = BODIES[S.step]();
+  if (steps()[S.step - 1]?.live) panel.innerHTML = steps()[S.step - 1].body();
 }
 
 // ---- answers -----------------------------------------------------------------------------------
@@ -309,6 +432,10 @@ panel.addEventListener("click", (e) => {
       if (v === "remove") S.settings.trim = true;
     } else if (k === "colours") {
       S.settings.maxColors = ladder().maxColorsFor(+v);
+    } else if (k === "light") {
+      Object.assign(S.settings, LIGHT.find((l) => l[0] === v)[1]);
+    } else if (["speckle", "maxColors", "simplify"].includes(k)) {
+      S.settings[k] = +v;
     }
     hooks.settingsChanged();
     render();

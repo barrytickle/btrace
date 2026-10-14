@@ -174,6 +174,11 @@ function autoRows() {
     const L = wizard.ladder();
     rows.push({ k: "colours", label: `Kept ${L.current} colour${L.current === 1 ? "" : "s"}`, why: an.nearDuplicates?.length ? "Two look almost alike: change it if they should be one" : "Each is clearly distinct", swatches: L.visible.slice(0, L.current).map((p) => S.recolor[p.color] ?? p.color), fixed: true, change: 3 });
   }
+  if (TYPES[S.settings.type].engine === "color") {
+    const c = wizard.photoChoices();
+    rows.push({ k: "detail", label: `${c.detail} detail`, why: "Keeps what you can see, without thousands of specks", fixed: true, change: 2 });
+    rows.push({ k: "pcolours", label: `Used ${c.colours.toLowerCase()}`, why: "Close to the photo, with a palette you can edit", fixed: true, change: 3 });
+  }
   if (TYPES[an.kind ?? "logo"].lines) rows.push({ k: "lines", label: "Straightened lines & sharpened corners", why: "Straight edges come out perfectly straight" });
   if (S.settings.type === "illustration" && an.softShare >= 0.02) rows.push({ k: "glow", label: "Kept the soft glows soft", why: "Instead of cutting them out with a hard edge" });
   const strays = straysOf(f).length;
@@ -232,11 +237,12 @@ const TOGGLES = {
   removeBg: ["Remove background", "The colour around the image's border."],
   trim: ["Trim empty space", "Fit the SVG to the drawing."],
   lines: ["Straight lines & sharp corners", "Off for hand-drawn, organic shapes."],
+  evenLighting: ["Even out the lighting", "Lifts shadows and uneven light before tracing, so they don't become shapes of their own."],
   noOverlap: ["Shapes don't overlap", "For cutting machines (vinyl, laser): each colour becomes its own piece. Glows need this off."],
 };
 
-function slider(k, cls = "") {
-  const d = SLIDERS[k];
+function slider(k, cls = "", over = {}) {
+  const d = { ...SLIDERS[k], ...over };
   const v = S.settings[k];
   return `<section class="${cls}"><label class="r" for="a-${k}">${d.label} <output id="o-${k}">${d.fmt(v)}</output></label>
     <input id="a-${k}" type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${v}" data-setting="${k}">
@@ -262,7 +268,7 @@ function advanced() {
           .map(([k, l]) => `<button class="${s.type === k ? "on" : ""}" data-type="${k}" aria-pressed="${s.type === k}" title="${TYPES[k].label}">${l}</button>`).join("")}</div>
         <p>${{ snap: "Flat colours: finds the real colours in the image and ignores blur and compression noise.", color: "Keeps shading and gradients as many small shapes.", bw: "Everything becomes black ink or transparent." }[engine]}</p></section>
       ${engine === "snap" ? `${slider("maxColors")}<div class="swatches" id="advSwatches"></div>${slider("smooth")}${toggle("glow")}` : ""}
-      ${engine === "color" ? slider("precision") + slider("gradient") : ""}
+      ${engine === "color" ? slider("maxColors", "", { max: 64 }) + slider("precision") + slider("gradient") + toggle("evenLighting") : ""}
       ${engine === "bw" ? slider("threshold") + toggle("adaptive") : ""}
       ${slider("simplify")}
       ${slider("speckle")}
@@ -317,6 +323,12 @@ panel.addEventListener("click", (e) => {
 
 // ---- Review -------------------------------------------------------------------------
 
+/// Review's choices for a photo: its own four questions.
+function photoRows(row) {
+  const c = wizard.photoChoices();
+  return [row(`${c.detail} detail`, "Detail", 2), row(c.colours, "Colours", 3), row(c.light, "Shadows & lighting", 4), row(c.smooth, "Smoothness", 5)].join("");
+}
+
 function trimRow() {
   const s = S.settings;
   // A trim that leaves the whole canvas isn't one.
@@ -344,7 +356,7 @@ function trimRow() {
 }
 
 function review() {
-  if (S.from === "guided") wizard.drawStepper(5);
+  if (S.from === "guided") wizard.drawStepper(wizard.reviewStep());
   else stepper.hidden = true;
   viewer.mount(stage, { tools: true, removable: true, hint: "Choose Remove on the toolbar to click away anything that shouldn't be there" });
   const r = S.result;
@@ -380,9 +392,10 @@ function review() {
     <div class="eyebrow">Your choices</div>
     <div class="did">
       ${row(TYPES[s.type].label, "Image type", 1)}
+      ${engine === "color" ? photoRows(row) : `
       ${row(s.removeBg ? "Background removed" : byHand ? "Parts removed by hand" : "Background kept", "Background", 2)}
       ${engine === "snap" ? row(`${wizard.ladder().current} colour${wizard.ladder().current === 1 ? "" : "s"}${Object.keys(S.recolor).length ? ", recoloured" : ""}`, "Colours", 3) : ""}
-      ${row(s.lines ? "Straight lines & sharp corners" : "Curves left as traced", s.glow && engine === "snap" ? "Details · glows kept soft" : "Details", 4)}
+      ${row(s.lines ? "Straight lines & sharp corners" : "Curves left as traced", s.glow && engine === "snap" ? "Details · glows kept soft" : "Details", 4)}`}
     </div>
     <div class="tip">${icon.bulb}<span>Made with ${MODES[S.from] ?? "Advanced"}. <b>Change</b> opens that question, then comes back here. Need every setting? <button class="link" data-act="advanced">Open Advanced</button>.</span></div>`;
   const ctx = S.batchCtx;
