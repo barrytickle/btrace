@@ -63,6 +63,31 @@ struct Rendered {
     bounds: Option<[f64; 4]>,
 }
 
+/// A palette colour for JS: `#rrggbb` and its share.
+#[derive(Serialize)]
+struct JsSwatch {
+    color: String,
+    share: f64,
+}
+
+/// What [`Tracer::analyse`] returns to JS; see [`vtracer::Analysis`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Analysed {
+    kind: &'static str,
+    palette: Vec<JsSwatch>,
+    near_duplicates: Vec<(usize, usize)>,
+    flat_share: f64,
+    soft_share: f64,
+    transparent_share: f64,
+    background: Option<JsSwatch>,
+    remove_background: bool,
+}
+
+fn hex(c: &Color) -> String {
+    format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
+}
+
 fn err(msg: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&msg.to_string())
 }
@@ -166,6 +191,23 @@ impl Tracer {
         Ok(Tracer {
             session: Session::new(img),
         })
+    }
+
+    /// Look at the image: its kind, palette, background and soft edges.
+    pub fn analyse(&self) -> Result<JsValue, JsValue> {
+        let a = vtracer::analyse(self.session.image());
+        let swatch = |s: &vtracer::Swatch| JsSwatch { color: hex(&s.color), share: s.share };
+        let out = Analysed {
+            kind: a.kind.as_str(),
+            palette: a.palette.iter().map(swatch).collect(),
+            near_duplicates: a.near_duplicates,
+            flat_share: a.flat_share,
+            soft_share: a.soft_share,
+            transparent_share: a.transparent_share,
+            background: a.background.as_ref().map(swatch),
+            remove_background: a.remove_background,
+        };
+        serde_wasm_bindgen::to_value(&out).map_err(err)
     }
 
     /// Trace with `options`; re-clusters only when a clustering option

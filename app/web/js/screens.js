@@ -2,14 +2,18 @@
 // the footer (Back / Next). Buttons carry data-act, handled in main.js.
 
 import { $, esc, formatBytes, icon, plural, prefs } from "./util.js";
-import { S, TYPES, withType } from "./state.js";
+import { S, TYPES, withType, savedCanvas, savedSvg, trimIsStale, trimWouldChange, trimCanvas } from "./state.js";
+import * as wizard from "./guided.js";
 import * as viewer from "./viewer.js";
 import * as recent from "./recent.js";
 
 const stage = $("stage"), panel = $("panel"), foot = $("foot"), stepper = $("stepper");
 
-/// Set by main.js: re-trace after a setting changed in a panel.
-export const hooks = { settingsChanged: () => {} };
+/// Set by main.js: re-trace after a setting changed in a panel; redraw the
+/// picture after a palette edit.
+export const hooks = { settingsChanged: () => {}, recolored: () => {} };
+
+export const { openStep, nextStep, prevStep, lastStep } = wizard;
 
 export const MODES = {
   auto: "Fully automatic",
@@ -95,20 +99,34 @@ export async function peekClipboard() {
 
 function findings() {
   const im = S.image;
-  const f = S.first;
+  const an = S.analysis;
   const chips = [];
-  if (f) chips.push(`<span class="chip"><b>${f.colors.length}</b> colour${f.colors.length === 1 ? "" : "s"}</span>`);
-  if (im.transparent) chips.push(`<span class="chip">Already transparent</span>`);
-  else if (im.whiteBorder) chips.push(`<span class="chip">White background</span>`);
-  const m = f && viewer.margins(f.bounds);
+  const chip = (html) => chips.push(`<span class="chip">${html}</span>`);
+  if (an) {
+    const glow = an.softShare >= 0.02;
+    chip({
+      logo: "<b>Logo</b> with crisp edges",
+      illustration: glow ? "<b>Illustration</b> with soft glows" : "<b>Illustration</b>",
+      detailed: "<b>Photo</b> or detailed art",
+      bw: "<b>Black &amp; white</b> drawing",
+    }[an.kind]);
+    if (an.kind !== "detailed") {
+      const bg = an.removeBackground ? an.background?.color : null;
+      const n = an.palette.filter((p) => p.color !== bg).length;
+      chip(`<b>${n}</b> colour${n === 1 ? "" : "s"}`);
+    }
+    if (an.transparentShare > 0.01) chip("Already transparent");
+    else if (an.background) chip(`${wizard.colourName(an.background.color).replace(/^./, (c) => c.toUpperCase())} background${an.removeBackground ? "" : " (part of the picture?)"}`);
+  }
+  const m = S.first && viewer.margins(S.first.bounds);
   // Only worth a mention when trimming would make a visible difference.
   const big = m && Math.max(m.top, m.right, m.bottom, m.left) >= Math.max(4, 0.03 * Math.min(im.width, im.height));
   if (big) {
     const sides = m.left === m.right && m.top === m.bottom ? `${m.left} / ${m.top} px` : `${Math.max(m.top, m.right, m.bottom, m.left)} px`;
-    chips.push(`<span class="chip"><b>${sides}</b> empty space</span>`);
+    chip(`<b>${sides}</b> empty space`);
   }
-  if (Math.max(im.width, im.height) < 400) chips.push(`<span class="chip">Small image (${im.width} × ${im.height}), traced at higher detail</span>`);
-  else chips.push(`<span class="chip">${im.width} × ${im.height} px</span>`);
+  if (Math.max(im.width, im.height) < 400) chip(`Small image (${im.width} × ${im.height}), traced at higher detail`);
+  else chip(`${im.width} × ${im.height} px`);
   return chips.join("");
 }
 
@@ -215,6 +233,7 @@ panel.addEventListener("click", (e) => {
   if (t) {
     const k = t.dataset.toggle;
     S.settings[k] = !S.settings[k];
+    if (k === "trim" && !S.settings.trim) S.trimBounds = null;
     if (k === "trim") render(); // shows or hides the padding slider
     else {
       t.classList.toggle("on", S.settings[k]);
@@ -233,8 +252,35 @@ panel.addEventListener("click", (e) => {
 
 // ---- Review -------------------------------------------------------------------------
 
+function trimRow() {
+  const s = S.settings;
+  // A trim that leaves the whole canvas isn't one.
+  const trimmed = s.trim && S.trimBounds && trimWouldChange(S.trimBounds);
+  const stale = trimmed && trimIsStale();
+  const c = savedCanvas();
+  const b = S.result.bounds;
+  const fresh = b && trimWouldChange(b) ? trimCanvas(b) : null;
+  let title, text;
+  if (stale) {
+    title = "The drawing changed since you trimmed";
+    text = fresh ? `Trim again to fit what's left (${fresh.w} × ${fresh.h} px).` : "Trim again: the drawing now fills the canvas.";
+  } else if (trimmed) {
+    title = `Trimmed to ${c.w} × ${c.h} px`;
+    text = "The dashed frame is the SVG's edge.";
+  } else {
+    title = "Not trimmed";
+    text = fresh ? `Trim fits the SVG to the drawing (${fresh.w} × ${fresh.h} px).` : "Trim fits the SVG to the drawing.";
+  }
+  return `<div class="trimrow${stale ? " stale" : ""}">
+      <span class="t"><strong>${title}</strong><span>${text}</span></span>
+      <span class="acts">${trimmed ? `<button class="btn ghost" data-act="untrim">Undo trim</button>` : ""}
+        <button class="btn${trimmed && !stale ? "" : " primary"}" data-act="trim">${stale ? "Trim again" : "Trim"}</button></span>
+    </div>`;
+}
+
 function review() {
-  stepper.hidden = true;
+  if (S.from === "guided") wizard.drawStepper(5);
+  else stepper.hidden = true;
   viewer.mount(stage, { tools: true, removable: true, hint: "Choose Remove on the toolbar to click away anything that shouldn't be there" });
   const r = S.result;
   const s = S.settings;
@@ -243,14 +289,13 @@ function review() {
     foot.innerHTML = backButton("reviewBack");
     return;
   }
-  const saved = S.cropped ?? r;
-  const c = viewer.savedCanvas();
-  const kb = formatBytes(new Blob([saved.svg]).size);
+  const c = savedCanvas();
+  const kb = formatBytes(new Blob([savedSvg()]).size);
   const removed = S.removals.length;
-  const fit = r.bounds ? `${Math.ceil(r.bounds[2] - r.bounds[0] + 2 * s.pad)} × ${Math.ceil(r.bounds[3] - r.bounds[1] + 2 * s.pad)}` : "";
-  const noSpace = viewer.spaceText() === "No empty space around the drawing";
-  const row = (title, what) => `<div class="row"><span class="ok">✓</span><span><b>${title}</b><small>${what}</small></span><button class="btn ghost" data-act="advanced">Change</button></div>`;
+  const an = S.analysis;
+  const row = (title, what, step) => `<div class="row"><span class="ok">✓</span><span><b>${title}</b><small>${what}</small></span><button class="btn ghost" data-act="step:${step}">Change</button></div>`;
   const engine = TYPES[s.type].engine;
+  const bgName = an?.background ? wizard.colourName(an.background.color) : "";
   panel.innerHTML = `<h2>Review</h2>
     <p class="sub">Check the result before saving. Drag the divider to compare with your original.</p>
     <div class="facts">
@@ -260,22 +305,18 @@ function review() {
       <div class="fact"><b>${kb.replace(/ \w+$/, "")}</b><small>${kb.split(" ")[1]} file</small></div>
     </div>
     <div class="eyebrow">Clean up</div>
-    ${!s.removeBg && !S.image.transparent && !removed ? `<div class="why">${icon.spark}<span>Is the colour around the edge a background? <button class="link" data-act="removeBg">Remove it</button>, or click it with <b>Remove</b> on the toolbar.</span></div>` : ""}
-    <div class="trimrow">
-      <span class="t"><strong>${s.trim ? `Trimmed to ${c.w} × ${c.h} px` : noSpace ? "No empty space to trim" : "Not trimmed"}</strong>
-        <span>${s.trim ? "The dashed frame is the SVG's edge." : noSpace ? "The drawing already fills the canvas." : `Trim fits the SVG to the drawing (${fit} px). ${viewer.spaceText()}.`}</span></span>
-      <span class="acts">${s.trim ? `<button class="btn ghost" data-act="untrim">Undo trim</button>` : `<button class="btn primary" data-act="trim" ${noSpace ? "disabled" : ""}>Trim</button>`}</span>
-    </div>
+    ${!s.removeBg && an?.background && !removed ? `<div class="why">${icon.spark}<span>The <b>${bgName}</b> around the edge can go: <button class="link" data-act="removeBg">remove it</button>, or click it with <b>Remove</b> on the toolbar.</span></div>` : ""}
+    ${trimRow()}
     <div class="tip">${icon.bulb}<span>To remove anything, choose <b>Remove</b> on the picture's toolbar and click it, background included. Shift-click removes every shape of that colour.</span></div>
     ${removed ? `<div class="tally">${removed} removed <button class="btn" data-act="undoRemove">Undo</button><button class="btn" data-act="clearRemove">Clear</button></div>` : ""}
     <div class="eyebrow">Your choices</div>
     <div class="did">
-      ${row(TYPES[s.type].label, "Image type")}
-      ${row(s.removeBg ? "Background removed" : removed ? "Parts removed by hand" : "Background kept", s.trim ? "Background · empty space trimmed" : "Background · not trimmed")}
-      ${engine === "snap" ? row(s.maxColors ? `Up to ${plural(s.maxColors, "colour")}` : `All ${plural(r.colors.length, "colour")} found`, "Colours") : ""}
-      ${row(s.lines ? "Straight lines & sharp corners" : "Curves left as traced", "Details")}
+      ${row(TYPES[s.type].label, "Image type", 1)}
+      ${row(s.removeBg ? "Background removed" : removed ? "Parts removed by hand" : "Background kept", "Background", 2)}
+      ${engine === "snap" ? row(`${wizard.ladder().current} colour${wizard.ladder().current === 1 ? "" : "s"}${Object.keys(S.recolor).length ? ", recoloured" : ""}`, "Colours", 3) : ""}
+      ${row(s.lines ? "Straight lines & sharp corners" : "Curves left as traced", s.glow && engine === "snap" ? "Details · glows kept soft" : "Details", 4)}
     </div>
-    <div class="tip">${icon.bulb}<span>Made with ${MODES[S.from] ?? "Advanced"}. <b>Change</b> opens Advanced, with everything you chose filled in.</span></div>`;
+    <div class="tip">${icon.bulb}<span>Made with ${MODES[S.from] ?? "Advanced"}. <b>Change</b> opens that question, then comes back here. Need every setting? <button class="link" data-act="advanced">Open Advanced</button>.</span></div>`;
   foot.innerHTML = `${backButton("reviewBack")}${boundsButton("empty space")}<div class="spacer"></div>
     <button class="btn" data-act="copy">Copy SVG</button><button class="btn primary" data-act="save">Save SVG</button>`;
 }
@@ -294,7 +335,7 @@ function batch() {
       <div class="progress"><div style="width:${(100 * (done + failed)) / n}%"></div></div>
       ${b.items.map((it, i) => {
         const st = { done: ["done", "Done"], tracing: ["run", "Tracing…"], error: ["", "Couldn't trace"], waiting: ["", "Waiting"] }[it.status];
-        const what = it.status === "done" ? `${plural(it.result.colors.length, "colour")} · ${it.cropped ? `trimmed to ${it.cropped.width} × ${it.cropped.height}` : "not trimmed"}` : it.status === "error" ? esc(it.error) : "Automatic";
+        const what = it.status === "done" ? `${plural(it.result.colors.length, "colour")} · ${it.cropped && (it.cropped.width < it.result.width || it.cropped.height < it.result.height) ? `trimmed to ${it.cropped.width} × ${it.cropped.height}` : "nothing to trim"}` : it.status === "error" ? esc(it.error) : "Automatic";
         return `<div class="bfile${it.status === "error" ? " err" : ""}"><span class="th checker"><img src="${it.traceURL ?? it.thumb}" alt=""></span>
           <span><b>${esc(it.name)}</b><small>${what}</small></span>
           <span class="state ${st[0]}">${st[1]}</span><button class="btn ghost small" data-act="batchRemove:${i}" title="Leave this image out" aria-label="Leave ${esc(it.name)} out">×</button></div>`;
@@ -310,7 +351,7 @@ function batch() {
 
 // ---- routing ---------------------------------------------------------------------------
 
-const screens = { start, mode, advanced, review, batch };
+const screens = { start, mode, guided: wizard.guided, advanced, review, batch };
 
 export function render() {
   $("batchbar").hidden = true;
@@ -322,4 +363,5 @@ export function traced() {
   if (S.screen === "mode") mode();
   else if (S.screen === "review") review();
   else if (S.screen === "advanced") advancedTraced();
+  else if (S.screen === "guided") wizard.traced();
 }

@@ -47,6 +47,9 @@ use crate::progress::Ctx;
 
 use super::{ColorClusterFrontend, Frontend};
 
+mod analyse;
+pub use analyse::{analyse, Analysis, ImageKind, Swatch};
+
 /// A pixel is flat when its OKLab distance to every 8-neighbour is below this.
 const FLAT_THRESHOLD: f64 = 0.05;
 /// Clusters closer than this in OKLab (toe-corrected lightness) are merged
@@ -215,6 +218,16 @@ pub fn detect_palette(img: &ColorImage, max_colors: usize) -> Vec<Color> {
 /// pass as flat, and the fade's in-between shades would become palette
 /// colors, slicing a glow into concentric bands.
 fn detect_palette_where(img: &ColorImage, max_colors: usize, soft: Option<&[f32]>) -> Vec<Color> {
+    let (mut clusters, _) = palette_clusters(img, soft);
+    if max_colors > 0 {
+        clusters.truncate(max_colors);
+    }
+    clusters.iter().map(Bin::color).collect()
+}
+
+/// The palette's clusters, most common first, and the number of flat opaque
+/// pixels they were found among (for shares). See [`detect_palette_where`].
+fn palette_clusters(img: &ColorImage, soft: Option<&[f32]>) -> (Vec<Bin>, usize) {
     let (w, h) = (img.width, img.height);
     let px = |x: usize, y: usize| img.get_pixel(x, y);
     let lab: Vec<Oklab> = (0..w * h).map(|i| Oklab::from_color_toe(&px(i % w, i / w))).collect();
@@ -264,10 +277,7 @@ fn detect_palette_where(img: &ColorImage, max_colors: usize, soft: Option<&[f32]
     let min = MIN_CLUSTER_PIXELS.max((flat_total as f64 * MIN_CLUSTER_SHARE) as usize);
     clusters.retain(|c| c.count >= min);
     clusters.sort_by(|a, b| b.count.cmp(&a.count));
-    if max_colors > 0 {
-        clusters.truncate(max_colors);
-    }
-    clusters.iter().map(Bin::color).collect()
+    (clusters, flat_total)
 }
 
 fn neighbours(x: usize, y: usize, w: usize, h: usize) -> impl Iterator<Item = (usize, usize)> {

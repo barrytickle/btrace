@@ -4,7 +4,7 @@
 // One viewer lives for the whole session and moves into whichever screen
 // shows a picture, so zoom and pan survive moving between screens.
 
-import { S } from "./state.js";
+import { S, savedCanvas, shownSvg } from "./state.js";
 import { svgURL } from "./util.js";
 
 const ZOOM_MIN = 0.05;
@@ -82,9 +82,9 @@ export function setImage(url) {
   if (root.isConnected) fit();
 }
 
-/// A new trace of the open image.
-export function setTrace(result) {
-  vec.innerHTML = result ? result.svg : "";
+/// Show the open image's trace (S.result, with palette edits), or clear it.
+export function setTrace() {
+  vec.innerHTML = shownSvg();
   updateOutlines();
   updateBounds();
 }
@@ -316,19 +316,6 @@ function updateOutlines() {
   if (!outlineImg.isConnected) art.insertBefore(outlineImg, el("vBounds"));
 }
 
-/// The saved SVG's canvas in image px: the whole image, or the trim.
-export function savedCanvas(b = S.result?.bounds) {
-  const { w: iw, h: ih } = size();
-  if (!S.settings.trim || !b) return { x: 0, y: 0, w: iw, h: ih };
-  const pad = S.settings.pad;
-  const bw = b[2] - b[0] + 2 * pad;
-  const bh = b[3] - b[1] + 2 * pad;
-  const w = Math.max(1, Math.ceil(bw));
-  const h = Math.max(1, Math.ceil(bh));
-  // The engine centres the drawing in the rounding slack.
-  return { x: b[0] - pad - (w - bw) / 2, y: b[1] - pad - (h - bh) / 2, w, h };
-}
-
 /// The empty space around the drawing, in px per side (untrimmed canvas).
 export function margins(b = S.result?.bounds) {
   const { w, h } = size();
@@ -346,13 +333,13 @@ function updateBounds() {
   layer.toggleAttribute("hidden", !show);
   if (!show) return;
   const { w, h } = size();
-  const c = savedCanvas(b);
+  const c = savedCanvas();
   layer.setAttribute("viewBox", `0 0 ${w} ${h}`);
   const frame = el("vFrame");
   for (const [k, v] of Object.entries({ x: c.x, y: c.y, width: c.w, height: c.h })) frame.setAttribute(k, v);
   el("vSpace").setAttribute(
     "d",
-    S.settings.trim ? "" : `M${c.x},${c.y}h${c.w}v${c.h}h${-c.w}Z M${b[0]},${b[1]}h${b[2] - b[0]}v${b[3] - b[1]}h${b[0] - b[2]}Z`,
+    S.settings.trim && S.trimBounds ? "" : `M${c.x},${c.y}h${c.w}v${c.h}h${-c.w}Z M${b[0]},${b[1]}h${b[2] - b[0]}v${b[3] - b[1]}h${b[0] - b[2]}Z`,
   );
 }
 

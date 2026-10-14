@@ -15,6 +15,11 @@ use vtracer::{Clustering, Config, FitMode, Hierarchical, Preset, Removal};
 #[derive(Parser, Debug)]
 #[command(name = "vtracer", version, about, rename_all = "kebab-case")]
 struct Args {
+    /// Print what PixPath notices about the image (kind, palette, background)
+    /// instead of tracing it. No output file is needed.
+    #[arg(long)]
+    analyse: bool,
+
     /// Input raster image (positional; or use --input).
     #[arg(value_name = "INPUT")]
     input_pos: Option<PathBuf>,
@@ -336,6 +341,10 @@ fn run() -> Result<(), String> {
         .as_ref()
         .or(args.input_pos.as_ref())
         .ok_or("no input path given (positional or --input)")?;
+    if args.analyse {
+        print_analysis(&read_image(input)?);
+        return Ok(());
+    }
     let output = args
         .output
         .as_ref()
@@ -350,8 +359,32 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
+fn print_analysis(img: &ColorImage) {
+    let a = vtracer::analyse(img);
+    let hex = |c: &Color| format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b);
+    println!("kind: {}", a.kind.as_str());
+    println!(
+        "flat {:.2} · soft {:.3} · transparent {:.2}",
+        a.flat_share, a.soft_share, a.transparent_share
+    );
+    let palette: Vec<String> = a.palette.iter().map(|s| format!("{} {:.3}", hex(&s.color), s.share)).collect();
+    println!("palette ({}): {}", palette.len(), palette.join(", "));
+    println!("near duplicates: {:?}", a.near_duplicates);
+    match a.background {
+        Some(b) => println!(
+            "background: {} on {:.0}% of the border · remove: {}",
+            hex(&b.color),
+            b.share * 100.0,
+            a.remove_background
+        ),
+        None => println!("background: none"),
+    }
+}
+
 fn main() -> ExitCode {
+    let analysing = std::env::args().any(|a| a == "--analyse");
     match run() {
+        Ok(()) if analysing => ExitCode::SUCCESS,
         Ok(()) => {
             println!("Conversion successful.");
             ExitCode::SUCCESS

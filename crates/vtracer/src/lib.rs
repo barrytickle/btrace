@@ -97,7 +97,7 @@ pub mod svg;
 pub use colorfit::Removal;
 pub use config::{Clustering, Config, FitMode, Hierarchical, Preset, SegmentKey};
 pub use error::Error;
-pub use frontend::Threshold;
+pub use frontend::{analyse, Analysis, ImageKind, Swatch, Threshold};
 pub use ir::{Segmentation, VectorDoc};
 pub use pipeline::Pipeline;
 pub use progress::{CancelToken, Phase, Progress};

@@ -1,10 +1,10 @@
 // PixPath app: start-up, actions, keyboard, and opening images.
 //
-// Flow: Start → "How would you like to trace it?" → Automatic / Advanced →
-// Review → Save. Several images at once make a batch.
+// Flow: Start → "How would you like to trace it?" → Automatic / Guided /
+// Advanced → Review → Save. Several images at once make a batch.
 
 import { $, prefs, setStatus, svgName, svgURL, toast } from "./util.js";
-import { S, options, croppedOptions, recommendedSettings } from "./state.js";
+import { S, options, recommendedSettings, savedSvg, trimCanvas, trimIsStale, trimWouldChange, TYPES } from "./state.js";
 import * as engine from "./engine.js";
 import * as viewer from "./viewer.js";
 import * as screens from "./screens.js";
@@ -24,18 +24,34 @@ function go(screen) {
 
 function requestRender() {
   if (!S.image) return;
-  engine.render(options(), croppedOptions());
+  engine.render(options());
 }
-screens.hooks.settingsChanged = requestRender;
 
-engine.setResultHandler((result, cropped, ms) => {
-  Object.assign(S, { result, cropped, ms });
+/// A setting changed. Off Review, the trim follows the drawing; in Review it
+/// only moves when Trim is clicked.
+function settingsChanged() {
+  if (S.screen !== "review") S.trimPending = true;
+  requestRender();
+}
+screens.hooks.settingsChanged = settingsChanged;
+screens.hooks.recolored = () => viewer.setTrace();
+
+engine.setResultHandler((result, _cropped, ms) => {
+  Object.assign(S, { result, ms });
   if (S.analysing) {
     S.first = result;
     S.analysing = false;
     viewer.setBusy(false);
   }
-  viewer.setTrace(result);
+  if (trimWhenTraced && engine.idle()) {
+    trimWhenTraced = false;
+    queueMicrotask(trim);
+  }
+  if (S.trimPending && engine.idle()) {
+    S.trimPending = false;
+    if (S.settings.trim) S.trimBounds = result.bounds ?? null;
+  }
+  viewer.setTrace();
   viewer.refresh();
   setStatus(`Traced in ${Math.round(ms)} ms`);
   screens.traced();
@@ -59,28 +75,35 @@ async function openImage(blob, name) {
   }
   if (S.image) URL.revokeObjectURL(S.image.url);
   // Per-image state starts fresh: nothing carries over from the last image.
-  const image = { name, blob, url: URL.createObjectURL(blob), width: px.width, height: px.height, transparent: px.transparent, whiteBorder: px.whiteBorder };
+  const image = { name, blob, url: URL.createObjectURL(blob), width: px.width, height: px.height };
   Object.assign(S, {
     image,
-    settings: recommendedSettings(image),
+    analysis: null,
+    settings: recommendedSettings(null),
     removals: [],
+    recolor: {},
+    trimBounds: null,
+    trimPending: true,
     result: null,
-    cropped: null,
     first: null,
     analysing: true,
+    step: 1,
+    pickByHand: false,
   });
   S.view.tool = "compare";
   viewer.setImage(S.image.url);
-  viewer.setTrace(null);
+  viewer.setTrace();
   document.title = `${name} · PixPath`;
   go("mode");
   recent.add({ name, blob, width: px.width, height: px.height });
   try {
-    await engine.load(px);
+    S.analysis = await engine.load(px);
   } catch (e) {
     setStatus(String(e.message || e), "error");
     return;
   }
+  if (S.image !== image) return; // another image was opened meanwhile
+  S.settings = recommendedSettings();
   requestRender();
 }
 
@@ -148,9 +171,23 @@ window.addEventListener("focus", () => S.screen === "start" && screens.peekClipb
 
 // ---- batch -------------------------------------------------------------------------------
 //
-// Every image is traced in turn in a second worker with the same settings
-// "Fully automatic" would give it. Choosing how per batch, and reviewing each
-// image, come later.
+// Every image is traced in turn in a second worker with the settings "Fully
+// automatic" would give it, from its own analysis. Choosing how per batch,
+// and reviewing each image, come later.
+
+/// Engine options for every kind of image, with and without its background:
+/// the worker picks one per image once it has analysed it.
+function autoTable() {
+  const table = {};
+  for (const kind of Object.keys(TYPES)) {
+    table[kind] = {};
+    for (const [key, removeBackground] of [["keep", false], ["remove", true]]) {
+      const settings = recommendedSettings({ kind, removeBackground });
+      table[kind][key] = { options: options(settings, []), cropped: options(settings, [], true) };
+    }
+  }
+  return table;
+}
 
 function addToBatch(files, fromFolder) {
   if (!S.batch) S.batch = { items: [], fromFolder, running: false };
@@ -170,8 +207,7 @@ async function pumpBatch() {
   it.status = "tracing";
   if (S.screen === "batch") render();
   try {
-    const settings = recommendedSettings(await engine.decode(it.blob));
-    const out = await engine.traceOnce(it.blob, options(settings, []), croppedOptions(settings, []));
+    const out = await engine.traceOnce(it.blob, { auto: autoTable() });
     Object.assign(it, { status: "done", result: out.result, cropped: out.cropped, traceURL: svgURL((out.cropped ?? out.result).svg) });
   } catch (e) {
     if (S.batch !== b) return; // the batch was closed
@@ -229,10 +265,6 @@ function batchFiles() {
 
 // ---- actions --------------------------------------------------------------------------------
 
-function savedSvg() {
-  return (S.cropped ?? S.result)?.svg;
-}
-
 async function save() {
   if (S.screen === "batch") return saveAll(batchFiles());
   if (!savedSvg()) return toast("Open an image first");
@@ -245,19 +277,56 @@ async function copy() {
 }
 
 function chooseMode(mode) {
-  if (mode === "guided") {
-    toast("Guided is on its way. Try Fully automatic or Advanced for now");
-    return;
-  }
   prefs.set("mode", mode);
   S.from = mode;
   if (mode === "auto") {
     S.settings = recommendedSettings();
+    S.trimPending = true;
     requestRender();
     go("review");
+  } else if (mode === "guided") {
+    screens.openStep(1);
   } else {
     go("advanced");
   }
+}
+
+// ---- trim (Review) ----------------------------------------------------------------------------
+//
+// Trim is a button: it fits the canvas to the drawing as it is now, and
+// stays put until clicked again.
+
+let trimWhenTraced = false;
+
+function trim() {
+  if (!S.result) return;
+  // A removal is still being traced: trim to its result.
+  if (!engine.idle()) {
+    trimWhenTraced = true;
+    return;
+  }
+  const b = S.result.bounds;
+  const trimmed = S.settings.trim && S.trimBounds;
+  if (!b || !trimWouldChange(b)) {
+    toast("Nothing to trim: the drawing already fills the canvas");
+    if (trimmed) {
+      S.settings.trim = false;
+      S.trimBounds = null;
+      viewer.refresh();
+      render();
+    }
+    return;
+  }
+  if (trimmed && !trimIsStale()) {
+    toast("Already trimmed to fit the drawing");
+    return;
+  }
+  S.settings.trim = true;
+  S.trimBounds = b;
+  const c = trimCanvas(b);
+  toast(`Trimmed to ${c.w} × ${c.h} px`);
+  viewer.refresh();
+  render();
 }
 
 function setTheme() {
@@ -270,7 +339,7 @@ function setTheme() {
   } catch {}
 }
 
-const hasImage = () => !!S.image && ["mode", "advanced", "review"].includes(S.screen);
+const hasImage = () => !!S.image && ["mode", "guided", "advanced", "review"].includes(S.screen);
 const hasTrace = () => hasImage() && !!S.result;
 
 const actions = {
@@ -286,20 +355,26 @@ const actions = {
     go("start");
   },
   review: () => go("review"),
-  reviewBack: () => go(S.from === "advanced" ? "advanced" : "mode"),
+  reviewBack: () => (S.from === "guided" ? screens.openStep(screens.lastStep()) : go(S.from === "advanced" ? "advanced" : "mode")),
+  guidedNext: () => screens.nextStep(),
+  guidedPrev: () => screens.prevStep(),
   mode: () => go("mode"),
   advanced: () => go("advanced"),
   closeBatch: () => {
     closeBatch();
     go("start");
   },
-  trim: () => {
-    S.settings.trim = true;
-    requestRender();
+  trim,
+  resetColours: () => {
+    S.recolor = {};
+    viewer.setTrace();
+    render();
   },
   untrim: () => {
     S.settings.trim = false;
-    requestRender();
+    S.trimBounds = null;
+    viewer.refresh();
+    render();
   },
   removeBg: () => {
     S.settings.removeBg = true;
@@ -321,7 +396,7 @@ const actions = {
   bounds: () => {
     S.view.bounds = !S.view.bounds;
     viewer.refresh();
-    if (["advanced", "review"].includes(S.screen)) render();
+    if (["guided", "advanced", "review"].includes(S.screen)) render();
   },
   fit: () => viewer.fit(),
   zoomIn: () => viewer.zoomBy(1.25),
@@ -352,6 +427,7 @@ function run(a, el) {
     return;
   }
   if (a.startsWith("batchRemove:")) return removeFromBatch(+a.slice(12));
+  if (a.startsWith("step:")) return screens.openStep(+a.slice(5));
   actions[a]?.(el);
 }
 

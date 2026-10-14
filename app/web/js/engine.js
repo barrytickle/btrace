@@ -21,7 +21,7 @@ main.onmessage = ({ data }) => {
   if (data.type === "ready") {
     setStatus("");
   } else if (data.type === "loaded") {
-    onLoaded?.resolve();
+    onLoaded?.resolve(data.analysis);
     onLoaded = null;
   } else if (data.type === "rendered") {
     if (data.id < shownId) return; // an older render finished late
@@ -38,36 +38,18 @@ main.onmessage = ({ data }) => {
 };
 main.onerror = (e) => setStatus(`The engine failed to start: ${e.message || e}`, "error");
 
-/// Decode `blob` into pixels. Returns { rgba, width, height, transparent,
-/// whiteBorder }: whether any pixel is see-through, and whether the border is
-/// (almost) all plain white, the usual sign of a logo on a white background.
+/// Decode `blob` into pixels. Returns { rgba, width, height }.
 export async function decode(blob) {
   const bitmap = await createImageBitmap(blob);
   const { width, height } = bitmap;
   const ctx = new OffscreenCanvas(width, height).getContext("2d");
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
-  const data = ctx.getImageData(0, 0, width, height).data;
-  let transparent = false;
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] < 250) {
-      transparent = true;
-      break;
-    }
-  }
-  let white = 0;
-  let border = 0;
-  const visit = (x, y) => {
-    const i = (y * width + x) * 4;
-    border++;
-    if (data[i + 3] > 250 && data[i] > 235 && data[i + 1] > 235 && data[i + 2] > 235) white++;
-  };
-  for (let x = 0; x < width; x++) visit(x, 0), visit(x, height - 1);
-  for (let y = 1; y < height - 1; y++) visit(0, y), visit(width - 1, y);
-  return { rgba: data.buffer, width, height, transparent, whiteBorder: white >= 0.9 * border };
+  return { rgba: ctx.getImageData(0, 0, width, height).data.buffer, width, height };
 }
 
-/// Start a session on decoded pixels. Resolves once the engine has them.
+/// Start a session on decoded pixels. Resolves with the engine's analysis
+/// of the image (kind, palette, background…) once it has them.
 export function load({ rgba, width, height }) {
   shownId = renderId; // results for the previous image are stale now
   return new Promise((resolve, reject) => {
@@ -107,14 +89,20 @@ function batch() {
 
 let jobId = 0;
 
-/// Trace `blob` with a throwaway session. Resolves to
-/// { result, cropped, width, height, ms }.
-export function traceOnce(blob, options, cropped = null) {
+/// Trace `blob` with a throwaway session. `job` is { options, cropped }, or
+/// { auto } to pick settings from the image's own analysis (see worker.js).
+/// Resolves to { result, cropped, width, height, analysis, ms }.
+export function traceOnce(blob, job) {
   const id = ++jobId;
   return new Promise((resolve, reject) => {
     waiting.set(id, { resolve, reject });
-    batch().postMessage({ type: "trace-once", id, blob, options, cropped });
+    batch().postMessage({ type: "trace-once", id, blob, ...job });
   });
+}
+
+/// Whether the newest render has come back.
+export function idle() {
+  return shownId === renderId;
 }
 
 /// Abandon every batch job in flight (their promises reject).

@@ -7,7 +7,8 @@
 //                                               for the download
 // Messages out:
 //   { type: "ready" }                           wasm initialised
-//   { type: "loaded" }
+//   { type: "loaded", analysis }              what PixPath noticed (see
+//                                               Tracer.analyse)
 //   { type: "rendered", id, result, cropped, ms }
 //   { type: "error", id, message }
 //
@@ -47,7 +48,7 @@ onmessage = async (e) => {
     tracer = null;
     try {
       tracer = new Tracer(new Uint8Array(msg.rgba), msg.width, msg.height);
-      postMessage({ type: "loaded" });
+      postMessage({ type: "loaded", analysis: tracer.analyse() });
     } catch (err) {
       postMessage({ type: "error", id: -1, message: String(err) });
     }
@@ -65,7 +66,10 @@ onmessage = async (e) => {
 // Batch jobs: decode an image and trace it with a throwaway session, leaving
 // any interactive session in this worker untouched.
 //   in:  { type: "trace-once", id, blob, options, cropped }
-//   out: { type: "traced", id, result, cropped, width, height, ms }
+//        or { ..., auto } instead of options/cropped: a table
+//        auto[kind][removeBg ? "remove" : "keep"] = { options, cropped },
+//        picked by this image's own analysis (Fully automatic per image).
+//   out: { type: "traced", id, result, cropped, width, height, analysis, ms }
 //        or { type: "error", id, message }
 async function traceOnce(msg) {
   const t0 = performance.now();
@@ -77,9 +81,13 @@ async function traceOnce(msg) {
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
     t = new Tracer(new Uint8Array(ctx.getImageData(0, 0, width, height).data.buffer), width, height);
-    const result = t.render(msg.options);
-    const cropped = msg.cropped ? t.render(msg.cropped) : null;
-    postMessage({ type: "traced", id: msg.id, result, cropped, width, height, ms: performance.now() - t0 });
+    const analysis = t.analyse();
+    const { options, cropped: croppedOptions } = msg.auto
+      ? msg.auto[analysis.kind][analysis.removeBackground ? "remove" : "keep"]
+      : msg;
+    const result = t.render(options);
+    const cropped = croppedOptions ? t.render(croppedOptions) : null;
+    postMessage({ type: "traced", id: msg.id, result, cropped, width, height, analysis, ms: performance.now() - t0 });
   } catch (e) {
     postMessage({ type: "error", id: msg.id, message: String(e) });
   } finally {

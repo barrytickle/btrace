@@ -21,7 +21,7 @@ mod watershed;
 
 pub use binary::{BinaryFrontend, Threshold};
 pub use color_cluster::ColorClusterFrontend;
-pub use snap::{detect_palette, SnapFrontend};
+pub use snap::{analyse, detect_palette, Analysis, ImageKind, SnapFrontend, Swatch};
 pub use watershed::{WatershedFrontend, WatershedHierarchy};
 
 use visioncortex::ColorImage;
