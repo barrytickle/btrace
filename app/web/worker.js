@@ -71,7 +71,7 @@ onmessage = async (e) => {
 //        picked by this image's own analysis (Fully automatic per image).
 //        With `strays: true`, tiny stray shapes are removed too (logos and
 //        line art only; pass `kind` with explicit options).
-//   out: { type: "traced", id, result, cropped, width, height, analysis,
+//   out: { type: "traced", id, result, cropped, width, height, scale, analysis,
 //          first, strays, ms }: `first` = { bounds, strays } before strays
 //          were removed, `strays` = the removal points used.
 //        or { type: "error", id, message }
@@ -79,7 +79,15 @@ async function traceOnce(msg) {
   const t0 = performance.now();
   let t = null;
   try {
-    const bitmap = await createImageBitmap(msg.blob);
+    // Very large images are traced smaller (see MAX_PIXELS in js/engine.js).
+    const probe = await createImageBitmap(msg.blob);
+    const [pw, ph] = [probe.width, probe.height];
+    const k = Math.min(1, Math.sqrt(4_000_000 / (pw * ph)));
+    let bitmap = probe;
+    if (k < 1) {
+      probe.close();
+      bitmap = await createImageBitmap(msg.blob, { resizeWidth: Math.max(1, Math.round(pw * k)), resizeHeight: Math.max(1, Math.round(ph * k)), resizeQuality: "high" });
+    }
     const { width, height } = bitmap;
     const ctx = new OffscreenCanvas(width, height).getContext("2d");
     ctx.drawImage(bitmap, 0, 0);
@@ -100,7 +108,7 @@ async function traceOnce(msg) {
       result = t.render({ ...options, remove });
     }
     const cropped = croppedOptions ? t.render(croppedOptions) : null;
-    postMessage({ type: "traced", id: msg.id, result, cropped, width, height, analysis, first, strays, ms: performance.now() - t0 });
+    postMessage({ type: "traced", id: msg.id, result, cropped, width, height, scale: 1 / k, original: [pw, ph], analysis, first, strays, ms: performance.now() - t0 });
   } catch (e) {
     postMessage({ type: "error", id: msg.id, message: String(e) });
   } finally {

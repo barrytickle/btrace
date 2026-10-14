@@ -93,6 +93,9 @@ export function setTrace() {
 /// Show or hide the "Analysing" veil.
 export function setBusy(on) {
   el("vBusy").hidden = !on;
+  // Large photos take a while; say so rather than look stuck.
+  const big = (S.image?.width ?? 0) * (S.image?.height ?? 0) > 2_000_000;
+  el("vBusy").lastElementChild.textContent = big ? "Analysing your image… large photos take a little longer" : "Analysing your image…";
 }
 
 /// Re-read S.view and the screen options (tool, outlines, bounds, hint).

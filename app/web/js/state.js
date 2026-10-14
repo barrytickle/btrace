@@ -157,8 +157,10 @@ export function savedCanvas(st = S) {
 /// Whether trimming the current drawing would change the canvas at all.
 export function trimWouldChange(b = S.result?.bounds) {
   if (!b || !S.image) return false;
+  // Only a smaller canvas counts: a trace can poke a fraction of a pixel
+  // past the edges (a photo), which isn't empty space.
   const c = trimCanvas(b);
-  return c.w < S.image.width || c.h < S.image.height || Math.abs(c.x) > 0.5 || Math.abs(c.y) > 0.5;
+  return c.w < S.image.width || c.h < S.image.height;
 }
 
 /// Whether the drawing has changed since the trim snapshot.
@@ -197,6 +199,17 @@ export function shownSvg() {
 /// open image (S) or a batch image, which keeps the same fields.
 export function savedSvg(st = S) {
   if (!st.result) return "";
-  const svg = recolored(st.result.svg, st.recolor ?? {});
-  return st.settings.trim && st.trimBounds ? cropSvg(svg, savedCanvas(st)) : svg;
+  let svg = recolored(st.result.svg, st.recolor ?? {});
+  if (st.settings.trim && st.trimBounds) svg = cropSvg(svg, savedCanvas(st));
+  // A very large image was traced smaller: give the SVG the original size
+  // (the viewBox keeps the traced coordinates, so it simply scales up).
+  const scale = st.image?.scale ?? st.scale ?? 1;
+  if (scale > 1) {
+    const c = savedCanvas(st);
+    const full = c.w === (st.image?.width ?? st.width) && c.h === (st.image?.height ?? st.height);
+    const orig = st.image?.original ?? st.original;
+    const [w, h] = full && orig ? orig : [Math.round(c.w * scale), Math.round(c.h * scale)];
+    svg = svg.replace(/<svg[^>]*>/, (tag) => tag.replace(/\swidth="[^"]*"/, ` width="${w}"`).replace(/\sheight="[^"]*"/, ` height="${h}"`));
+  }
+  return svg;
 }

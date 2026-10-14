@@ -126,7 +126,9 @@ function findings() {
     const sides = m.left === m.right && m.top === m.bottom ? `${m.left} / ${m.top} px` : `${Math.max(m.top, m.right, m.bottom, m.left)} px`;
     chip(`<b>${sides}</b> empty space`);
   }
-  if (Math.max(im.width, im.height) < 400) chip(`Small image (${im.width} × ${im.height}), traced at higher detail`);
+  const sc = im.scale ?? 1;
+  if (sc > 1) chip(`Large image (${im.original[0]} × ${im.original[1]}), traced at ${im.width} × ${im.height}`);
+  else if (Math.max(im.width, im.height) < 400) chip(`Small image (${im.width} × ${im.height}), traced at higher detail`);
   else chip(`${im.width} × ${im.height} px`);
   return chips.join("");
 }

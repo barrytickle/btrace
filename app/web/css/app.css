@@ -378,7 +378,7 @@ h2 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height
 .zoombar button.on { background: var(--accent-soft); color: var(--ink); }
 .mode[disabled] { opacity: .55; cursor: progress; }
 .zoombar .pct { min-width: 46px; text-align: center; font: 12px var(--mono); }
-.stage .analysing { z-index: 3; gap: 10px; grid-auto-flow: column; }
+.stage .analysing { z-index: 3; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .stage .dropzone.over, .stage.over .dropzone { border-color: var(--accent); background: var(--accent-soft); }
 .stage.over::after { content: "Drop to open"; position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 16px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent-soft) 80%, transparent); font: 600 22px var(--display); color: var(--ink); z-index: 5; }
 .stage.over.start::after { content: none; }

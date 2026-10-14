@@ -37,6 +37,16 @@ function settingsChanged() {
 screens.hooks.settingsChanged = settingsChanged;
 screens.hooks.recolored = () => viewer.setTrace();
 
+// A trace that fails must never leave "Analysing…" up forever.
+engine.setFailHandler((message) => {
+  if (S.analysing) {
+    S.analysing = false;
+    viewer.setBusy(false);
+    if (S.screen === "mode") render();
+  }
+  toast(`PixPath couldn't trace this image (${message}). Try a smaller copy.`);
+});
+
 engine.setResultHandler((result, _cropped, ms) => {
   Object.assign(S, { result, ms });
   if (S.analysing) {
@@ -50,7 +60,8 @@ engine.setResultHandler((result, _cropped, ms) => {
   }
   if (S.trimPending && engine.idle()) {
     S.trimPending = false;
-    if (S.settings.trim) S.trimBounds = result.bounds ?? null;
+    // Only a trim that makes the canvas smaller is kept.
+    S.trimBounds = S.settings.trim && trimWouldChange(result.bounds) ? result.bounds : null;
   }
   viewer.setTrace();
   viewer.refresh();
@@ -80,7 +91,9 @@ async function openImage(blob, name, item = null, where = "mode") {
   }
   if (S.image) URL.revokeObjectURL(S.image.url);
   if (!item) S.batchCtx = null;
-  const image = { name, blob, url: URL.createObjectURL(blob), width: px.width, height: px.height };
+  // width/height are the traced size; scale > 1 when a very large image is
+  // traced smaller (the saved SVG gets the original size back).
+  const image = { name, blob, url: URL.createObjectURL(blob), width: px.width, height: px.height, scale: px.scale, original: px.original };
   Object.assign(S, {
     image,
     analysis: item?.analysis ?? null,

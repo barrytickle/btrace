@@ -73,6 +73,9 @@ const NEAR_DUPLICATE: f64 = 0.12;
 const BORDER_MATCH: f64 = 0.1;
 /// Soft-edge share above which an image has glows worth keeping.
 const GLOW_SHARE: f64 = 0.02;
+/// Soft-edge share above which an image is a photo: soft almost everywhere,
+/// not a few glows (an illustration's moon glow is ~3%, a photo ~30%).
+const PHOTO_SOFT_SHARE: f64 = 0.15;
 
 /// Look at `img` and describe it. Cost: one soft-edge map and one palette
 /// detection, about what the first stage of a snap trace costs.
@@ -146,7 +149,7 @@ pub fn analyse(img: &ColorImage) -> Analysis {
         && ink_on_paper
     {
         ImageKind::BlackAndWhite
-    } else if flat_share < 0.5 || significant.len() > 12 {
+    } else if flat_share < 0.5 || significant.len() > 12 || soft_share >= PHOTO_SOFT_SHARE {
         ImageKind::Detailed
     } else if soft_share >= GLOW_SHARE || significant.len() >= 7 {
         ImageKind::Illustration
@@ -220,6 +223,16 @@ mod tests {
     fn white_letters_on_a_black_card_are_a_logo() {
         let img = image(60, 40, |x, _| if x % 10 < 2 { [250, 250, 250, 255] } else { [5, 5, 5, 255] });
         assert_eq!(analyse(&img).kind, ImageKind::Logo);
+    }
+
+    #[test]
+    fn soft_everywhere_is_a_photo() {
+        // Soft bands, 16 px apart: wide ramps everywhere, like a photo.
+        let img = image(120, 120, |x, _| {
+            let v = (127.5 + 127.5 * (x as f64 * std::f64::consts::PI / 8.0).sin()) as u8;
+            [v, v, v / 2, 255]
+        });
+        assert_eq!(analyse(&img).kind, ImageKind::Detailed);
     }
 
     #[test]

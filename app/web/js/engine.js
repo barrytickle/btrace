@@ -14,6 +14,7 @@ const main = new Worker(WORKER_URL, { type: "module" });
 let renderId = 0;
 let shownId = 0;
 let onResult = () => {};
+let onFailed = () => {};
 let onLoaded = null;
 
 setStatus("Starting engine…", "busy");
@@ -33,19 +34,44 @@ main.onmessage = ({ data }) => {
       onLoaded = null;
     } else {
       setStatus(data.message, "error");
+      onFailed(data.message);
     }
   }
 };
-main.onerror = (e) => setStatus(`The engine failed to start: ${e.message || e}`, "error");
+main.onerror = (e) => {
+  setStatus(`The engine stopped: ${e.message || e}`, "error");
+  onFailed(String(e.message || e));
+};
 
-/// Decode `blob` into pixels. Returns { rgba, width, height }.
+/// Images are traced at no more than this many pixels. A phone photo is
+/// 12 MP; traced at full size it takes minutes and makes a huge SVG with no
+/// more visible detail. Saved SVGs keep the original size (see `scale`).
+export const MAX_PIXELS = 4_000_000;
+
+/// The traced size for an image of `w` × `h`: { width, height, scale }, where
+/// `scale` (≥ 1) is original px per traced px.
+export function tracedSize(w, h) {
+  const k = Math.min(1, Math.sqrt(MAX_PIXELS / (w * h)));
+  return { width: Math.max(1, Math.round(w * k)), height: Math.max(1, Math.round(h * k)), scale: 1 / k };
+}
+
+/// Decode `blob` into pixels, scaled down if it's very large. Returns
+/// { rgba, width, height, scale }: the traced size, and original px per
+/// traced px.
 export async function decode(blob) {
-  const bitmap = await createImageBitmap(blob);
+  const probe = await createImageBitmap(blob);
+  const original = [probe.width, probe.height];
+  const size = tracedSize(...original);
+  let bitmap = probe;
+  if (size.scale > 1) {
+    probe.close();
+    bitmap = await createImageBitmap(blob, { resizeWidth: size.width, resizeHeight: size.height, resizeQuality: "high" });
+  }
   const { width, height } = bitmap;
   const ctx = new OffscreenCanvas(width, height).getContext("2d");
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
-  return { rgba: ctx.getImageData(0, 0, width, height).data.buffer, width, height };
+  return { rgba: ctx.getImageData(0, 0, width, height).data.buffer, width, height, scale: size.scale, original };
 }
 
 /// Start a session on decoded pixels. Resolves with the engine's analysis
@@ -62,6 +88,11 @@ export function load({ rgba, width, height }) {
 export function render(options, cropped = null) {
   setStatus("Tracing…", "busy");
   main.postMessage({ type: "render", id: ++renderId, options, cropped });
+}
+
+/// Called with the message when a trace fails (or the engine stops).
+export function setFailHandler(fn) {
+  onFailed = fn;
 }
 
 /// Called with (result, cropped, ms) for each new result of `render()`.

@@ -102,8 +102,8 @@ async function pump() {
       it.first = out.first;
       it.findStrays = false;
     }
-    Object.assign(it, { status: "done", result: out.result, width: out.width, height: out.height });
-    it.trimBounds = it.settings.trim ? out.result.bounds ?? null : null;
+    Object.assign(it, { status: "done", result: out.result, width: out.width, height: out.height, scale: out.scale, original: out.original });
+    it.trimBounds = it.settings.trim && trims(it, out.result.bounds) ? out.result.bounds : null;
     refreshThumbs(it);
   } catch (e) {
     if (S.batch !== b) return; // the batch was closed
