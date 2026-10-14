@@ -1,11 +1,11 @@
-# Release a new version of the Btrace desktop app.
+# Release a new version of the PixPath desktop app.
 #
 #   powershell -ExecutionPolicy Bypass -File app\desktop\release.ps1 0.2.0
 #
 # Sets the version everywhere it lives, commits, tags v<version>, and pushes
 # the branch and that one tag. The tag starts the "Desktop release" GitHub
 # Action, which builds the signed installer and publishes the release;
-# installed copies of Btrace then offer the update on their next start.
+# installed copies of PixPath then offer the update on their next start.
 #
 # Native tools (git, cargo) print progress on stderr, which Windows
 # PowerShell 5.1 turns into errors under $ErrorActionPreference = "Stop".
@@ -48,7 +48,7 @@ Set-Version "$desktop\package.json" '^(  "version": )"[^"]*"' "`$1`"$Version`""
 Set-Version "$desktop\src-tauri\Cargo.toml" '^(version = )"[^"]*"' "`$1`"$Version`""
 
 # Keep Cargo.lock's entry for the app in step (no network needed).
-Run cargo update --manifest-path "$desktop\src-tauri\Cargo.toml" -p btrace-desktop --offline
+Run cargo update --manifest-path "$desktop\src-tauri\Cargo.toml" -p pixpath-desktop --offline
 
 Run git add "$desktop\src-tauri\tauri.conf.json" "$desktop\package.json" "$desktop\src-tauri\Cargo.toml" "$desktop\src-tauri\Cargo.lock"
 # Already at this version (e.g. the first release): tag the current commit.

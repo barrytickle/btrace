@@ -1,4 +1,4 @@
-// Btrace app: UI state, canvas interaction, and talking to the engine worker.
+// PixPath app: UI state, canvas interaction, and talking to the engine worker.
 
 const $ = (id) => document.getElementById(id);
 
@@ -657,7 +657,7 @@ function showGuidedResult(result, out, bytes) {
   if (auto) guided.autoColors = n;
   if (state.mode === "snap") {
     g.found.textContent = auto
-      ? `Btrace found ${n} colour${n === 1 ? "" : "s"}. If two of them should be the same colour, use fewer.`
+      ? `PixPath found ${n} colour${n === 1 ? "" : "s"}. If two of them should be the same colour, use fewer.`
       : `Using ${n} colour${n === 1 ? "" : "s"}.`;
     g.swatches.replaceChildren(
       ...result.colors.slice(0, 24).map((hex) => {
@@ -688,7 +688,7 @@ g.fewer.onclick = () => {
 };
 g.more.onclick = () => {
   const next = +ui.maxColors.value + 1;
-  // Back at (or past) what Btrace found on its own: that's Auto.
+  // Back at (or past) what PixPath found on its own: that's Auto.
   setColourCount(next >= guided.autoColors ? 0 : next);
 };
 g.count.onclick = () => setColourCount(0);
@@ -730,7 +730,7 @@ async function checkForUpdate() {
     return; // offline, or no release published yet
   }
   if (!update) return;
-  $("updateText").textContent = `Btrace ${update.version} is available`;
+  $("updateText").textContent = `PixPath ${update.version} is available`;
   $("update").hidden = false;
   $("updateLater").onclick = () => ($("update").hidden = true);
   $("updateInstall").onclick = async () => {
@@ -743,7 +743,7 @@ async function checkForUpdate() {
         if (event.event === "Progress") {
           done += event.data.chunkLength;
           const pct = total ? ` ${Math.round((done / total) * 100)}%` : "";
-          $("updateText").textContent = `Downloading Btrace ${update.version}…${pct}`;
+          $("updateText").textContent = `Downloading PixPath ${update.version}…${pct}`;
         }
         if (event.event === "Finished") $("updateText").textContent = "Installing…";
       });
@@ -985,7 +985,7 @@ async function saveBatch() {
   }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(zipStore(files));
-  a.download = "btrace-svgs.zip";
+  a.download = "pixpath-svgs.zip";
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   setStatus(`Downloaded ${files.length} SVGs as a zip`);

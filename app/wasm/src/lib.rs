@@ -1,4 +1,4 @@
-//! WebAssembly core for the Btrace app.
+//! WebAssembly core for the PixPath app.
 //!
 //! A [`Tracer`] holds one image in a [`Session`], so the expensive clustering
 //! runs once and every slider move or removal click only re-runs the cheap

@@ -1,7 +1,7 @@
-# Start the Btrace app: builds the engine if needed, serves app/web locally
+# Start the PixPath app: builds the engine if needed, serves app/web locally
 # and opens it in your browser. Ctrl+C stops the server.
 $web = "$PSScriptRoot\web"
-if (-not (Test-Path "$web\pkg\btrace_wasm_bg.wasm")) {
+if (-not (Test-Path "$web\pkg\pixpath_wasm_bg.wasm")) {
     & "$PSScriptRoot\build.ps1"
     if (-not $?) { exit 1 }
 }

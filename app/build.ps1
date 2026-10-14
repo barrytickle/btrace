@@ -1,4 +1,4 @@
-# Build the Btrace app's engine (WebAssembly) into app/web/pkg.
+# Build the PixPath app's engine (WebAssembly) into app/web/pkg.
 # Needs: Rust with the wasm32-unknown-unknown target, and wasm-pack.
 #
 # wasm-pack prints progress on stderr, which Windows PowerShell 5.1 turns into

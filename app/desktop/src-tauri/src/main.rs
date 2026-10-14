@@ -1,4 +1,4 @@
-//! Btrace desktop: the web UI in a native window, plus the two things a
+//! PixPath desktop: the web UI in a native window, plus the two things a
 //! browser page can't do well: a native "Save as" dialog, and auto-updates
 //! from GitHub Releases (driven from the UI via the updater plugin).
 
@@ -84,7 +84,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![save_svg, save_all])
         .run(tauri::generate_context!())
-        .expect("error while running Btrace");
+        .expect("error while running PixPath");
 }
 
 #[cfg(test)]
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn free_path_never_overwrites_and_stays_in_folder() {
-        let dir = std::env::temp_dir().join(format!("btrace-free-path-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("pixpath-free-path-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(free_path(&dir, "logo.svg"), dir.join("logo.svg"));
         std::fs::write(dir.join("logo.svg"), "x").unwrap();

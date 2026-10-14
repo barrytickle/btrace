@@ -19,12 +19,12 @@ Next: build it for real in the app, under the name **PixPath**.
 
 ## Build stages
 
-Release after each stage with `app\desktop\release.ps1 x.y.z`, so installed
-copies update along the way.
+Stages are committed and tested locally; the first release is the whole
+PixPath rebuild (suggested v0.3.0), once the new flow works end to end.
 
 ### 1. Rename to PixPath
 - Product name, window title, About, installer (`tauri.conf.json`
-  productName), UI copy, BTRACE.md.
+  productName), UI copy, docs/DEVELOPMENT.md (was BTRACE.md).
 - **Keep auto-update working for installed copies.** The updater endpoint is
   `github.com/barrytickle/btrace/releases/latest/download/latest.json`.
   Renaming the repo is fine (GitHub redirects), but test the update from

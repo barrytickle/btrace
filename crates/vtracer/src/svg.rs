@@ -47,7 +47,7 @@ impl SvgWriter {
         out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         let _ = writeln!(
             out,
-            "<!-- Generator: Btrace (based on visioncortex VTracer {}) -->",
+            "<!-- Generator: PixPath (based on visioncortex VTracer {}) -->",
             env!("CARGO_PKG_VERSION")
         );
         // viewBox makes the drawing scale with the element it is shown in;

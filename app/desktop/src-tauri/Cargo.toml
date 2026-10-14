@@ -1,6 +1,6 @@
 [package]
-name = "btrace-desktop"
-description = "Btrace desktop app: the Btrace web UI in a native window, with auto-updates."
+name = "pixpath-desktop"
+description = "PixPath desktop app: the PixPath web UI in a native window, with auto-updates."
 version = "0.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"

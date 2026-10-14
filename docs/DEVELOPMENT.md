@@ -1,15 +1,15 @@
-# Btrace
+# PixPath development notes
 
-Btrace is a raster-to-vector tracer that branched off
+PixPath is a raster-to-vector tracer that branched off
 [visioncortex VTracer](https://github.com/visioncortex/vtracer) 1.0.0-alpha.4
 (October 2026) and now goes its own way. The aim is Vector Magic-quality traces
 of logos, icons, UI and other flat-color art.
 
 VTracer is © Chris Tsang and contributors, MIT OR Apache-2.0 (see `LICENSE`).
-Btrace keeps that license and attribution. The upstream repo is kept as the
+PixPath keeps that license and attribution. The upstream repo is kept as the
 `upstream` git remote so useful fixes can still be pulled in.
 
-## What Btrace adds
+## What PixPath adds
 
 ### Snap clustering (`--clustering snap`)
 
@@ -40,7 +40,7 @@ Code: `crates/vtracer/src/frontend/snap.rs`.
 ### Glows (`--snap-glow`, with `--hierarchical stacked`)
 
 Where a shape fades softly into what is behind it (a moon into the sky, a
-light), Btrace measures how soft that edge is and draws a matching **halo**:
+light), PixPath measures how soft that edge is and draws a matching **halo**:
 the shape stays crisp, and underneath it a grown, blurred copy fades into the
 backdrop. The halo is clipped to the backdrop's colour and confined to the
 soft stretches of the edge, so it never paints over a silhouette or a tree in
@@ -99,7 +99,7 @@ target\release\vtracer.exe in.png out.svg --clustering snap --hierarchical stack
 
 ## App
 
-`app/` is Btrace's interface: a web page running the engine as WebAssembly
+`app/` is PixPath's interface: a web page running the engine as WebAssembly
 in a background worker, with a cached session so slider moves and clicks only
 re-run the cheap stages.
 
@@ -180,8 +180,8 @@ elease.ps1 0.2.0`
 1. **Menu bar** (in-app, so browser and desktop match): File (Open, Open
    folder, Recent, Save SVG, Save all), Edit (Undo/Redo, including settings),
    View (split / trace / original, outlines, zoom), Help (Check for updates,
-   What's new, Keyboard shortcuts, Report a problem, About Btrace).
-2. **Btrace's own look**, not a VTracer lookalike: design 2-3 directions as
+   What's new, Keyboard shortcuts, Report a problem, About PixPath).
+2. **PixPath's own look**, not a VTracer lookalike: design 2-3 directions as
    clickable mock-ups, pick one, then build it (brand colours and type, light
    theme, start screen, trace-reveal animation, result-first layout).
 3. **Guided as a real wizard**, in the spirit of Vector Magic's flow (our own

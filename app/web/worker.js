@@ -1,4 +1,4 @@
-// Runs the Btrace engine off the UI thread.
+// Runs the PixPath engine off the UI thread.
 //
 // Messages in:
 //   { type: "load", rgba, width, height }       start a session on an image
@@ -15,7 +15,7 @@
 // meanwhile queue up; each one only replaces `pending`, and a single drain
 // runs the newest. Dragging a slider never replays stale positions.
 
-import init, { Tracer } from "./pkg/btrace_wasm.js";
+import init, { Tracer } from "./pkg/pixpath_wasm.js";
 
 let tracer = null;
 let pending = null;

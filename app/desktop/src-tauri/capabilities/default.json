@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the Btrace window may do: check for and install updates, restart, and show save dialogs.",
+  "description": "What the PixPath window may do: check for and install updates, restart, and show save dialogs.",
   "windows": ["main"],
   "permissions": [
     "core:default",

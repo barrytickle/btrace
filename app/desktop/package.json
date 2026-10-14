@@ -1,8 +1,8 @@
 {
-  "name": "btrace-desktop",
+  "name": "pixpath-desktop",
   "private": true,
   "version": "0.2.0",
-  "description": "Btrace desktop app (Tauri) around app/web.",
+  "description": "PixPath desktop app (Tauri) around app/web.",
   "scripts": {
     "tauri": "tauri",
     "engine": "powershell -NoProfile -ExecutionPolicy Bypass -File ../build.ps1",

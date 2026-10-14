@@ -14,9 +14,9 @@ exclude = [
     "crates/vtracer-py",
     # wasm-bindgen cdylib; built with wasm-pack as the Node package's core.
     "nodejs",
-    # Btrace app core; wasm-bindgen cdylib built with wasm-pack (--target web).
+    # PixPath app core; wasm-bindgen cdylib built with wasm-pack (--target web).
     "app/wasm",
-    # Btrace desktop app (Tauri); built with the Tauri CLI from app/desktop.
+    # PixPath desktop app (Tauri); built with the Tauri CLI from app/desktop.
     "app/desktop/src-tauri",
 ]
 

@@ -1,6 +1,6 @@
 name: Desktop release
 
-# Builds the Btrace desktop installer (Windows) and publishes it as a GitHub
+# Builds the PixPath desktop installer (Windows) and publishes it as a GitHub
 # Release together with latest.json, which installed copies of the app check
 # to auto-update. Runs when a version tag (v1.2.3) is pushed; app/desktop/
 # release.ps1 bumps the version and pushes the tag.
@@ -57,8 +57,8 @@ jobs:
         with:
           projectPath: app/desktop
           tagName: ${{ github.ref_name }}
-          releaseName: Btrace ${{ github.ref_name }}
-          releaseBody: Download the setup .exe below to install Btrace. Installed copies update themselves.
+          releaseName: PixPath ${{ github.ref_name }}
+          releaseBody: Download the setup .exe below to install PixPath. Installed copies update themselves.
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

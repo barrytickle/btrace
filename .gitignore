@@ -7,10 +7,10 @@ Cargo.lock
 .vscode
 .DS_Store
 
-# Btrace lab output
+# PixPath lab output
 lab/out/
 
-# Btrace app build output
+# PixPath app build output
 app/wasm/target/
 app/web/pkg/
 
