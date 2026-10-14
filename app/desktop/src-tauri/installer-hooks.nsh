@@ -4,8 +4,10 @@
 ; the product name, so the first PixPath update would otherwise install next
 ; to the old "Btrace" instead of replacing it. After PixPath is installed,
 ; look for the old Btrace entry (per-user install, our publisher only) and run
-; its own uninstaller silently. App data is kept: it lives under the bundle
-; identifier (com.barrytickle.btrace), which has not changed.
+; its own uninstaller silently, then add PixPath's Start menu shortcut (an
+; update skips it, and the uninstaller removed Btrace's). App data is kept:
+; it lives under the bundle identifier (com.barrytickle.btrace), which has
+; not changed.
 
 !macro NSIS_HOOK_POSTINSTALL
   ; Borrow three registers; the installer's own code continues after us.
@@ -27,6 +29,12 @@
     ExecWait '"$R8\uninstall.exe" /S _?=$R8'
     Delete "$R8\uninstall.exe"
     RMDir "$R8"
+    DeleteRegKey HKCU "Software\Barry Tickle\Btrace"
+    ; An update runs in update mode, which skips the Start menu shortcut
+    ; (it expects the old one), but Btrace's uninstaller just removed
+    ; Btrace's. Add PixPath's, where Tauri's own installer puts it.
+    IfFileExists "$SMPROGRAMS\${PRODUCTNAME}.lnk" +2 0
+      CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
   btrace_done:
   Pop $R9
   Pop $R8
